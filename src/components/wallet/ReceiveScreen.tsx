@@ -32,10 +32,50 @@ export const ReceiveScreen: React.FC<ReceiveScreenProps> = ({ onBack }) => {
   }, [walletAddress]);
 
   const handleCopy = async () => {
-    if (walletAddress) {
-      await navigator.clipboard.writeText(walletAddress);
+    if (!walletAddress) return;
+    
+    try {
+      // Try modern clipboard API first
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(walletAddress);
+      } else {
+        // Fallback for older browsers or non-secure contexts (like Telegram Mini App)
+        const textArea = document.createElement('textarea');
+        textArea.value = walletAddress;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-999999px';
+        textArea.style.top = '-999999px';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        
+        try {
+          document.execCommand('copy');
+        } finally {
+          textArea.remove();
+        }
+      }
+      
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+      // Try one more fallback
+      try {
+        const textArea = document.createElement('textarea');
+        textArea.value = walletAddress;
+        textArea.style.position = 'fixed';
+        textArea.style.opacity = '0';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        document.execCommand('copy');
+        textArea.remove();
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      } catch (e) {
+        alert('Please copy manually: ' + walletAddress);
+      }
     }
   };
 
@@ -100,11 +140,33 @@ export const ReceiveScreen: React.FC<ReceiveScreenProps> = ({ onBack }) => {
         </div>
 
         {/* Address Display */}
-        <div className="bg-gray-50 dark:bg-gray-900 rounded-xl p-4">
-          <p className="text-xs text-gray-500 mb-2 text-center">Your Wallet Address</p>
+        <div 
+          className="bg-gray-50 dark:bg-gray-900 rounded-xl p-4 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+          onClick={handleCopy}
+        >
+          <div className="flex items-center justify-center gap-2 mb-2">
+            <p className="text-xs text-gray-500">Your Wallet Address</p>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleCopy();
+              }}
+              className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors"
+              title="Copy address"
+            >
+              {copied ? (
+                <CheckIcon className="w-4 h-4 text-green-500" />
+              ) : (
+                <CopyIcon className="w-4 h-4 text-gray-400" />
+              )}
+            </button>
+          </div>
           <p className="text-sm font-mono text-gray-900 dark:text-white break-all text-center leading-relaxed">
             {walletAddress}
           </p>
+          {copied && (
+            <p className="text-xs text-green-500 text-center mt-2">✓ Address copied to clipboard!</p>
+          )}
         </div>
 
         {/* Action Buttons */}

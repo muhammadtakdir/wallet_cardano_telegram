@@ -69,11 +69,52 @@ export const BalanceCard: React.FC<BalanceCardProps> = ({
   }, [balance, address, network]);
 
   const handleCopyAddress = async () => {
-    if (address) {
-      await navigator.clipboard.writeText(address);
+    if (!address) return;
+    
+    try {
+      // Try modern clipboard API first
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(address);
+      } else {
+        // Fallback for older browsers or non-secure contexts (like Telegram Mini App)
+        const textArea = document.createElement('textarea');
+        textArea.value = address;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-999999px';
+        textArea.style.top = '-999999px';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        
+        try {
+          document.execCommand('copy');
+        } finally {
+          textArea.remove();
+        }
+      }
+      
       setCopied(true);
       onCopyAddress?.();
       setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+      // Try one more fallback
+      try {
+        const textArea = document.createElement('textarea');
+        textArea.value = address;
+        textArea.style.position = 'fixed';
+        textArea.style.opacity = '0';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        document.execCommand('copy');
+        textArea.remove();
+        setCopied(true);
+        onCopyAddress?.();
+        setTimeout(() => setCopied(false), 2000);
+      } catch (e) {
+        alert('Please copy manually: ' + address);
+      }
     }
   };
 
@@ -171,20 +212,31 @@ export const BalanceCard: React.FC<BalanceCardProps> = ({
 
         {/* Address Section */}
         {address && (
-          <div className="bg-gray-50 dark:bg-gray-900 rounded-xl p-3">
+          <div 
+            className="bg-gray-50 dark:bg-gray-900 rounded-xl p-3 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+            onClick={handleCopyAddress}
+          >
             <div className="flex items-center justify-between">
               <div className="flex-1 min-w-0">
-                <p className="text-xs text-gray-500 dark:text-gray-400 mb-0.5">
-                  Wallet Address
-                </p>
+                <div className="flex items-center gap-1 mb-0.5">
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Wallet Address
+                  </p>
+                  {copied && (
+                    <span className="text-xs text-green-500">✓ Copied!</span>
+                  )}
+                </div>
                 <p className="text-sm font-mono text-gray-700 dark:text-gray-300 truncate">
                   {shortenAddress(address, 12)}
                 </p>
               </div>
               <button
-                onClick={handleCopyAddress}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleCopyAddress();
+                }}
                 className="ml-3 p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
-                title="Copy address"
+                title="Copy full address"
               >
                 {copied ? (
                   <CheckIcon className="w-5 h-5 text-green-500" />
