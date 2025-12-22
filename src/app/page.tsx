@@ -1,65 +1,408 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
+import * as React from "react";
+import { useWalletStore, useTelegram } from "@/hooks";
+import { hasStoredWallet } from "@/lib/storage";
+import { WalletDashboard, MnemonicDisplay } from "@/components/wallet";
+import { Card, Button, PinInput, Input } from "@/components/ui";
+
+type AppView = "loading" | "setup" | "create" | "import" | "backup" | "unlock" | "dashboard";
+
+export default function WalletPage() {
+  const {
+    isLoggedIn,
+    isLoading,
+    error,
+    createNewWallet,
+    importWallet,
+    unlockWallet,
+    clearError,
+  } = useWalletStore();
+
+  const { isInTelegram, ready, expand, hapticFeedback } = useTelegram();
+
+  const [view, setView] = React.useState<AppView>("loading");
+  const [pin, setPin] = React.useState("");
+  const [confirmPin, setConfirmPin] = React.useState("");
+  const [mnemonic, setMnemonic] = React.useState("");
+  const [importMnemonic, setImportMnemonic] = React.useState("");
+  const [pinError, setPinError] = React.useState("");
+
+  // Initialize Telegram WebApp
+  React.useEffect(() => {
+    if (isInTelegram) {
+      ready();
+      expand();
+    }
+  }, [isInTelegram, ready, expand]);
+
+  // Determine initial view on mount
+  React.useEffect(() => {
+    const checkWalletStatus = () => {
+      if (isLoggedIn) {
+        setView("dashboard");
+      } else if (hasStoredWallet()) {
+        setView("unlock");
+      } else {
+        setView("setup");
+      }
+    };
+    
+    // Small delay to allow hydration
+    const timer = setTimeout(checkWalletStatus, 100);
+    return () => clearTimeout(timer);
+  }, [isLoggedIn]);
+
+  // Update view when login status changes
+  React.useEffect(() => {
+    if (isLoggedIn) {
+      setView("dashboard");
+    }
+  }, [isLoggedIn]);
+
+  // Clear errors when changing views
+  React.useEffect(() => {
+    clearError();
+    setPinError("");
+    setPin("");
+    setConfirmPin("");
+  }, [view, clearError]);
+
+  // Handle create wallet
+  const handleCreateWallet = async () => {
+    if (pin.length < 6) {
+      setPinError("PIN must be at least 6 digits");
+      return;
+    }
+    if (pin !== confirmPin) {
+      setPinError("PINs do not match");
+      return;
+    }
+
+    try {
+      const newMnemonic = await createNewWallet(pin);
+      setMnemonic(newMnemonic);
+      setView("backup");
+      if (isInTelegram) {
+        hapticFeedback.notificationOccurred("success");
+      }
+    } catch (err) {
+      if (isInTelegram) {
+        hapticFeedback.notificationOccurred("error");
+      }
+    }
+  };
+
+  // Handle import wallet
+  const handleImportWallet = async () => {
+    if (pin.length < 6) {
+      setPinError("PIN must be at least 6 digits");
+      return;
+    }
+    if (pin !== confirmPin) {
+      setPinError("PINs do not match");
+      return;
+    }
+    if (!importMnemonic.trim()) {
+      setPinError("Please enter your recovery phrase");
+      return;
+    }
+
+    const success = await importWallet(importMnemonic, pin);
+    if (success) {
+      if (isInTelegram) {
+        hapticFeedback.notificationOccurred("success");
+      }
+      setView("dashboard");
+    } else {
+      if (isInTelegram) {
+        hapticFeedback.notificationOccurred("error");
+      }
+    }
+  };
+
+  // Handle unlock
+  const handleUnlock = async (enteredPin: string) => {
+    const success = await unlockWallet(enteredPin);
+    if (success) {
+      if (isInTelegram) {
+        hapticFeedback.notificationOccurred("success");
+      }
+      setView("dashboard");
+    } else {
+      setPinError("Invalid PIN");
+      setPin("");
+      if (isInTelegram) {
+        hapticFeedback.notificationOccurred("error");
+      }
+    }
+  };
+
+  // Render loading
+  if (view === "loading") {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4" />
+          <p className="text-gray-500 dark:text-gray-400">Loading wallet...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Render setup choice
+  if (view === "setup") {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-gray-50 dark:bg-gray-900">
+        <div className="text-center mb-8">
+          <WalletLogo className="w-20 h-20 mx-auto mb-4 text-blue-600" />
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+            Cardano Wallet
           </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+          <p className="text-gray-500 dark:text-gray-400">
+            Non-custodial wallet for Telegram
           </p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+
+        <div className="w-full max-w-sm space-y-4">
+          <Button
+            variant="primary"
+            size="lg"
+            fullWidth
+            onClick={() => setView("create")}
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+            Create New Wallet
+          </Button>
+          <Button
+            variant="outline"
+            size="lg"
+            fullWidth
+            onClick={() => setView("import")}
           >
-            Documentation
-          </a>
+            Import Existing Wallet
+          </Button>
         </div>
-      </main>
-    </div>
-  );
+
+        <p className="mt-8 text-xs text-gray-400 dark:text-gray-500 text-center max-w-sm">
+          Your keys, your crypto. All signing happens locally on your device.
+          We never have access to your funds.
+        </p>
+      </div>
+    );
+  }
+
+  // Render create wallet flow
+  if (view === "create") {
+    return (
+      <div className="min-h-screen p-6 bg-gray-50 dark:bg-gray-900">
+        <button
+          onClick={() => setView("setup")}
+          className="mb-6 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 flex items-center gap-1"
+        >
+          <BackIcon className="w-5 h-5" />
+          Back
+        </button>
+
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+          Create New Wallet
+        </h1>
+        <p className="text-gray-500 dark:text-gray-400 mb-6">
+          Set a PIN to secure your wallet
+        </p>
+
+        <Card padding="lg" className="space-y-6">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+              Enter PIN (6+ digits)
+            </label>
+            <PinInput
+              value={pin}
+              onChange={setPin}
+              error={pinError && pin.length > 0 ? pinError : undefined}
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+              Confirm PIN
+            </label>
+            <PinInput
+              value={confirmPin}
+              onChange={setConfirmPin}
+              error={pinError && confirmPin.length > 0 ? pinError : undefined}
+            />
+          </div>
+
+          {error && (
+            <p className="text-sm text-red-500 text-center">{error}</p>
+          )}
+
+          <Button
+            variant="primary"
+            size="lg"
+            fullWidth
+            onClick={handleCreateWallet}
+            isLoading={isLoading}
+            disabled={pin.length < 6 || confirmPin.length < 6}
+          >
+            Create Wallet
+          </Button>
+        </Card>
+      </div>
+    );
+  }
+
+  // Render import wallet flow
+  if (view === "import") {
+    return (
+      <div className="min-h-screen p-6 bg-gray-50 dark:bg-gray-900">
+        <button
+          onClick={() => setView("setup")}
+          className="mb-6 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 flex items-center gap-1"
+        >
+          <BackIcon className="w-5 h-5" />
+          Back
+        </button>
+
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+          Import Wallet
+        </h1>
+        <p className="text-gray-500 dark:text-gray-400 mb-6">
+          Enter your recovery phrase
+        </p>
+
+        <Card padding="lg" className="space-y-6">
+          <Input
+            label="Recovery Phrase"
+            placeholder="Enter your 12, 15, 18, 21, or 24 word phrase"
+            value={importMnemonic}
+            onChange={(e) => setImportMnemonic(e.target.value)}
+            helperText="Separate words with spaces"
+          />
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+              Set PIN (6+ digits)
+            </label>
+            <PinInput
+              value={pin}
+              onChange={setPin}
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+              Confirm PIN
+            </label>
+            <PinInput
+              value={confirmPin}
+              onChange={setConfirmPin}
+            />
+          </div>
+
+          {(error || pinError) && (
+            <p className="text-sm text-red-500 text-center">{error || pinError}</p>
+          )}
+
+          <Button
+            variant="primary"
+            size="lg"
+            fullWidth
+            onClick={handleImportWallet}
+            isLoading={isLoading}
+            disabled={!importMnemonic.trim() || pin.length < 6 || confirmPin.length < 6}
+          >
+            Import Wallet
+          </Button>
+        </Card>
+      </div>
+    );
+  }
+
+  // Render backup screen (after wallet creation)
+  if (view === "backup") {
+    return (
+      <div className="min-h-screen p-6 bg-gray-50 dark:bg-gray-900">
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+          Backup Your Wallet
+        </h1>
+        <p className="text-gray-500 dark:text-gray-400 mb-6">
+          Save your recovery phrase securely
+        </p>
+
+        <MnemonicDisplay
+          mnemonic={mnemonic}
+          onConfirmed={() => {
+            setMnemonic(""); // Clear mnemonic from state
+            setView("dashboard");
+          }}
+        />
+      </div>
+    );
+  }
+
+  // Render unlock screen
+  if (view === "unlock") {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-gray-50 dark:bg-gray-900">
+        <WalletLogo className="w-16 h-16 mb-6 text-blue-600" />
+        
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+          Welcome Back
+        </h1>
+        <p className="text-gray-500 dark:text-gray-400 mb-8">
+          Enter your PIN to unlock
+        </p>
+
+        <Card padding="lg" className="w-full max-w-sm">
+          <PinInput
+            value={pin}
+            onChange={setPin}
+            onComplete={handleUnlock}
+            error={pinError}
+            autoFocus
+          />
+
+          {isLoading && (
+            <div className="mt-4 text-center text-gray-500">
+              Unlocking...
+            </div>
+          )}
+        </Card>
+
+        <button
+          onClick={() => {
+            // Show reset option
+            if (confirm("This will delete your wallet. Make sure you have your recovery phrase backed up. Continue?")) {
+              useWalletStore.getState().deleteWallet();
+              setView("setup");
+            }
+          }}
+          className="mt-8 text-sm text-red-500 hover:text-red-600"
+        >
+          Forgot PIN? Reset Wallet
+        </button>
+      </div>
+    );
+  }
+
+  // Render dashboard
+  if (view === "dashboard") {
+    return <WalletDashboard />;
+  }
+
+  return null;
 }
+
+// Icons
+const WalletLogo: React.FC<{ className?: string }> = ({ className }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+    <path d="M21 18v1c0 1.1-.9 2-2 2H5c-1.11 0-2-.9-2-2V5c0-1.1.89-2 2-2h14c1.1 0 2 .9 2 2v1h-9c-1.11 0-2 .9-2 2v8c0 1.1.89 2 2 2h9zm-9-2h10V8H12v8zm4-2.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z" />
+  </svg>
+);
+
+const BackIcon: React.FC<{ className?: string }> = ({ className }) => (
+  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+  </svg>
+);
