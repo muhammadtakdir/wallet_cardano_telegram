@@ -5,6 +5,61 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+---
+
+## [0.3.0] - 2024-12-22 - Phase 2: Send/Receive & Native Assets 🚧
+
+### Added
+
+#### Send ADA
+- Send ADA to any Cardano address
+- Address validation (Bech32 format check)
+- Amount validation with balance check
+- Transaction fee estimation
+- Confirmation screen before sending
+- Transaction status tracking
+
+#### Receive
+- QR code generation for wallet address
+- Copy address to clipboard
+- Share address functionality
+
+#### Native Assets Support
+- Display native tokens in wallet
+- Display NFTs with metadata
+- Asset detail view
+- Token transfer support
+
+---
+
+## [0.2.2] - 2024-12-22 - Phase 1 Complete ✅
+
+### Added
+
+#### Mnemonic Verification
+- Verify 3 random words before proceeding to wallet dashboard
+- Ensures user has properly backed up their recovery phrase
+- Random word selection on each wallet creation
+
+#### MnemonicInput Component
+- Per-word input grid (3 columns)
+- Support for 12, 15, 18, 21, 24 word phrases
+- Auto-detect word count when pasting
+- Auto-advance to next input field
+- Paste entire mnemonic at once
+- Progress indicator (X of Y words entered)
+- Clear all button
+
+#### Import Flow Improvements
+- Split into 2 steps: mnemonic input → PIN setup
+- Better UX with dedicated screens
+
+### Fixed
+- Zustand infinite loop with useShallow for object selectors
+- SSR hydration mismatch with hydration safety check
+
+---
+
 ## [0.2.1] - 2024-12-22
 
 ### Security

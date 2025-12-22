@@ -4,10 +4,10 @@ import * as React from "react";
 import { useWalletStore, useTelegram } from "@/hooks";
 import { hasStoredWallet, getWalletsList } from "@/lib/storage";
 import { isLockedOut, getLockoutRemaining } from "@/lib/storage/encryption";
-import { WalletDashboard, MnemonicDisplay, MnemonicInput } from "@/components/wallet";
+import { WalletDashboard, MnemonicDisplay, MnemonicInput, SendScreen, ReceiveScreen } from "@/components/wallet";
 import { Card, Button, PinInput, Input } from "@/components/ui";
 
-type AppView = "loading" | "setup" | "create" | "import" | "import-pin" | "backup" | "unlock" | "dashboard";
+type AppView = "loading" | "setup" | "create" | "import" | "import-pin" | "backup" | "unlock" | "dashboard" | "send" | "receive";
 
 // Hydration safe hook - prevents SSR mismatch
 function useHydrated() {
@@ -500,9 +500,34 @@ export default function WalletPage() {
     );
   }
 
+  // Render send screen
+  if (view === "send") {
+    return (
+      <SendScreen
+        onBack={() => setView("dashboard")}
+        onSuccess={(txHash) => {
+          console.log("Transaction sent:", txHash);
+          // Refresh balance after successful send
+          useWalletStore.getState().refreshBalance();
+        }}
+      />
+    );
+  }
+
+  // Render receive screen
+  if (view === "receive") {
+    return <ReceiveScreen onBack={() => setView("dashboard")} />;
+  }
+
   // Render dashboard
   if (view === "dashboard") {
-    return <WalletDashboard onAddWallet={handleAddWallet} />;
+    return (
+      <WalletDashboard
+        onAddWallet={handleAddWallet}
+        onSend={() => setView("send")}
+        onReceive={() => setView("receive")}
+      />
+    );
   }
 
   return null;
