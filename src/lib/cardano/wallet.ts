@@ -1358,18 +1358,28 @@ export const delegateToPool = async (
 
     const rewardAddress = rewardAddresses[0];
 
+    // Validasi: reward address harus milik wallet (dari mnemonic yang sama)
+    // Cek apakah reward address ada di antara address wallet
+    const usedAddresses = await wallet.getUsedAddresses();
+    const unusedAddresses = await wallet.getUnusedAddresses();
+    const allAddresses = [...(usedAddresses || []), ...(unusedAddresses || [])];
+    const isRewardAddressRelated = allAddresses.some(addr => typeof addr === 'string' && rewardAddress.includes(addr.slice(0, 20)));
+    if (!isRewardAddressRelated) {
+      return { success: false, error: `Reward address is not related to wallet. Debug: rewardAddress=${rewardAddress}, walletAddresses=${allAddresses.join(',')}` };
+    }
+
     // Build delegation transaction
     const txBuilder = new MeshTxBuilder({
       fetcher: provider,
       submitter: provider,
-      verbose: false,
+      verbose: true, // Aktifkan verbose untuk debug
     });
 
     // Check if stake address is already registered
     const stakeInfo = await getStakingInfo(rewardAddress);
-    
+
     let unsignedTx: string;
-    
+
     if (!stakeInfo || !stakeInfo.active) {
       // Need to register stake address first (2 ADA deposit) then delegate
       unsignedTx = await txBuilder
@@ -1388,20 +1398,28 @@ export const delegateToPool = async (
     }
 
     // Sign the transaction
-    const signedTx = await wallet.signTx(unsignedTx);
+    let signedTx;
+    try {
+      signedTx = await wallet.signTx(unsignedTx);
+    } catch (signErr) {
+      return { success: false, error: `Failed to sign staking tx: ${signErr instanceof Error ? signErr.message : signErr}` };
+    }
 
     // Submit the transaction
-    const txHash = await wallet.submitTx(signedTx);
+    let txHash;
+    try {
+      txHash = await wallet.submitTx(signedTx);
+    } catch (submitErr) {
+      return { success: false, error: `Failed to submit staking tx: ${submitErr instanceof Error ? submitErr.message : submitErr}` };
+    }
 
     return { success: true, txHash };
   } catch (error) {
     console.error("Error delegating to pool:", error);
     const message = error instanceof Error ? error.message : String(error);
-    
     if (message.includes("INPUTS_EXHAUSTED") || message.includes("insufficient")) {
       return { success: false, error: "Insufficient funds. Need ~2.2 ADA for first delegation." };
     }
-    
     return { success: false, error: message || "Delegation failed" };
   }
 };
