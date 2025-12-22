@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.3.8] - 2024-12-22 - ADA Handle Support & Collateral Management 🎯
+
+### Added
+- **ADA Handle Support**: Send to ADA Handles ($handle) instead of addresses
+  - Auto-detect ADA Handle format (starts with $)
+  - Resolve handle to Cardano address via Blockfrost
+  - Shows resolved address for verification
+  - Support for mainnet, preprod, and preview networks
+
+- **Collateral Management**: Prepare wallet for dApp interactions
+  - `CollateralManager` component for collateral setup
+  - Auto-detect suitable collateral UTxO (5-10 ADA, pure ADA)
+  - Setup collateral with one click (creates 5 ADA UTxO)
+  - Status indicator showing if wallet is dApp-ready
+
+- **Smart Contract Preparation**: Functions for dApp support
+  - `getCollateralUtxo()` - Find suitable collateral UTxO
+  - `hasCollateral()` - Check if wallet can interact with smart contracts
+  - `setupCollateral()` - Create collateral UTxO if needed
+  - `getCollateralStatus()` - Full collateral status info
+
+### Changed
+- `SendScreen.tsx` - Updated to support ADA Handle resolution
+  - New input field accepts both addresses and handles
+  - Shows resolution status (loading, error, success)
+  - Displays resolved handle name on confirmation screen
+
+- `wallet.ts` - Added ADA Handle and collateral functions
+  - `isAdaHandle()` - Check if input is ADA Handle format
+  - `resolveAdaHandle()` - Resolve handle to address
+  - `resolveRecipient()` - Smart resolve (handle or address)
+
+### Technical
+- ADA Handle policy ID configured for all networks
+- Collateral minimum: 5 ADA (recommended for most dApps)
+- Debounced handle resolution (500ms) for better UX
+
+---
+
 ## [0.3.7] - 2024-12-22 - Transaction Labels & Asset Name Display 🏷️
 
 ### Added

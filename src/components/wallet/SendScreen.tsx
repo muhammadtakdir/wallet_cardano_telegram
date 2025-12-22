@@ -3,7 +3,7 @@
 import * as React from "react";
 import { Card, Button, PinInput } from "@/components/ui";
 import { useWalletStore } from "@/hooks";
-import { shortenAddress, adaToLovelace, WalletAsset } from "@/lib/cardano";
+import { shortenAddress, adaToLovelace, WalletAsset, isAdaHandle, resolveRecipient } from "@/lib/cardano";
 import { verifyPin, getStoredWalletForVerification } from "@/lib/storage/encryption";
 import { QRScanner } from "./QRScanner";
 
@@ -27,11 +27,21 @@ interface SelectableAsset {
   assetName?: string;
 }
 
+// Resolved recipient info
+interface ResolvedRecipient {
+  address: string;
+  isHandle: boolean;
+  handleName?: string;
+}
+
 export const SendScreen: React.FC<SendScreenProps> = ({ onBack, onSuccess }) => {
   const { walletAddress, balance, network, activeWalletId } = useWalletStore();
   const [step, setStep] = React.useState<SendStep>("select-asset");
   const [selectedAsset, setSelectedAsset] = React.useState<SelectableAsset | null>(null);
   const [recipient, setRecipient] = React.useState("");
+  const [resolvedRecipient, setResolvedRecipient] = React.useState<ResolvedRecipient | null>(null);
+  const [isResolvingHandle, setIsResolvingHandle] = React.useState(false);
+  const [handleError, setHandleError] = React.useState<string | null>(null);
   const [amount, setAmount] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
   const [txHash, setTxHash] = React.useState<string | null>(null);
@@ -124,16 +134,77 @@ export const SendScreen: React.FC<SendScreenProps> = ({ onBack, onSuccess }) => 
     }
   }, [selectedAsset, amountNum, feeNum, availableAmount, balance?.ada]);
 
-  // Validate Cardano address (basic Bech32 check)
+  // Validate Cardano address (basic Bech32 check) or ADA Handle
   const isValidAddress = React.useMemo(() => {
+    // If we have a resolved recipient address, use that
+    if (resolvedRecipient?.address) {
+      const addr = resolvedRecipient.address;
+      const isMainnet = addr.startsWith("addr1");
+      const isTestnet = addr.startsWith("addr_test1");
+      const isValid = (network === "mainnet" && isMainnet) || (network !== "mainnet" && isTestnet);
+      return isValid && addr.length >= 50;
+    }
+    
+    // Otherwise check if input is valid address
     if (!recipient) return false;
+    
+    // Check if it's an ADA Handle (will be resolved separately)
+    if (isAdaHandle(recipient)) {
+      return false; // Will be validated after resolution
+    }
+    
     const isMainnet = recipient.startsWith("addr1");
     const isTestnet = recipient.startsWith("addr_test1");
     const isValid = (network === "mainnet" && isMainnet) || (network !== "mainnet" && isTestnet);
     return isValid && recipient.length >= 50;
-  }, [recipient, network]);
+  }, [recipient, network, resolvedRecipient]);
 
-  const canProceed = isValidAddress && amountNum > 0 && hasEnoughBalance;
+  // Resolve ADA Handle when input changes
+  React.useEffect(() => {
+    const resolveHandle = async () => {
+      // Reset resolved recipient when input changes
+      setResolvedRecipient(null);
+      setHandleError(null);
+      
+      if (!recipient) return;
+      
+      // Check if it's an ADA Handle
+      if (isAdaHandle(recipient)) {
+        setIsResolvingHandle(true);
+        try {
+          const result = await resolveRecipient(recipient);
+          if (result.address) {
+            setResolvedRecipient({
+              address: result.address,
+              isHandle: result.isHandle,
+              handleName: result.handleName,
+            });
+          } else {
+            setHandleError(`ADA Handle "${recipient}" not found`);
+          }
+        } catch (err) {
+          setHandleError("Failed to resolve ADA Handle");
+        } finally {
+          setIsResolvingHandle(false);
+        }
+      } else if (recipient.length >= 50) {
+        // It's a regular address
+        setResolvedRecipient({
+          address: recipient,
+          isHandle: false,
+        });
+      }
+    };
+
+    // Debounce the resolution
+    const timer = setTimeout(resolveHandle, 500);
+    return () => clearTimeout(timer);
+  }, [recipient]);
+
+  const canProceed = (isValidAddress || (resolvedRecipient?.address && !handleError)) && 
+                     amountNum > 0 && 
+                     hasEnoughBalance && 
+                     !isResolvingHandle;
 
   const handleSelectAsset = (asset: SelectableAsset) => {
     setSelectedAsset(asset);
@@ -161,8 +232,12 @@ export const SendScreen: React.FC<SendScreenProps> = ({ onBack, onSuccess }) => 
   const handleContinue = () => {
     setError(null);
     if (!canProceed) {
-      if (!isValidAddress) {
-        setError("Invalid recipient address");
+      if (isResolvingHandle) {
+        setError("Resolving ADA Handle...");
+      } else if (handleError) {
+        setError(handleError);
+      } else if (!resolvedRecipient?.address && !isValidAddress) {
+        setError("Invalid recipient address or ADA Handle");
       } else if (amountNum <= 0) {
         setError("Please enter an amount");
       } else if (!hasEnoughBalance) {
@@ -209,6 +284,15 @@ export const SendScreen: React.FC<SendScreenProps> = ({ onBack, onSuccess }) => 
   const handleSend = async () => {
     if (!selectedAsset) return;
     
+    // Get the final recipient address (resolved from handle or direct address)
+    const finalRecipient = resolvedRecipient?.address || recipient;
+    
+    if (!finalRecipient) {
+      setError("No valid recipient address");
+      setStep("error");
+      return;
+    }
+    
     setStep("sending");
     setIsLoading(true);
     setError(null);
@@ -227,7 +311,7 @@ export const SendScreen: React.FC<SendScreenProps> = ({ onBack, onSuccess }) => 
         const { sendTransaction } = await import("@/lib/cardano");
         result = await sendTransaction(
           walletInstance,
-          recipient,
+          finalRecipient,
           adaToLovelace(amount)
         );
       } else {
@@ -235,7 +319,7 @@ export const SendScreen: React.FC<SendScreenProps> = ({ onBack, onSuccess }) => 
         const { sendAssetTransaction } = await import("@/lib/cardano");
         result = await sendAssetTransaction(
           walletInstance,
-          recipient,
+          finalRecipient,
           selectedAsset.unit,
           amount
         );
@@ -431,11 +515,11 @@ export const SendScreen: React.FC<SendScreenProps> = ({ onBack, onSuccess }) => 
             </div>
           )}
 
-          {/* Recipient Address */}
+          {/* Recipient Address or ADA Handle */}
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Recipient Address
+                Recipient Address or ADA Handle
               </label>
               <button
                 onClick={() => setShowQRScanner(true)}
@@ -448,16 +532,39 @@ export const SendScreen: React.FC<SendScreenProps> = ({ onBack, onSuccess }) => 
             <textarea
               value={recipient}
               onChange={(e) => setRecipient(e.target.value.trim())}
-              placeholder={network === "mainnet" ? "addr1..." : "addr_test1..."}
+              placeholder={network === "mainnet" ? "addr1... or $handle" : "addr_test1... or $handle"}
               rows={3}
               className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm font-mono resize-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
-            {recipient && !isValidAddress && (
+            
+            {/* Status messages */}
+            {isResolvingHandle && (
+              <p className="text-sm text-blue-500 mt-1 flex items-center gap-1">
+                <span className="animate-spin">⏳</span> Resolving ADA Handle...
+              </p>
+            )}
+            {handleError && (
+              <p className="text-sm text-red-500 mt-1">
+                {handleError}
+              </p>
+            )}
+            {resolvedRecipient?.isHandle && resolvedRecipient.address && (
+              <div className="mt-2 p-2 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                <p className="text-sm text-green-600 dark:text-green-400 flex items-center gap-1">
+                  <CheckIcon className="w-4 h-4" /> 
+                  <span className="font-medium">{resolvedRecipient.handleName}</span> resolved
+                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 font-mono mt-1 break-all">
+                  {shortenAddress(resolvedRecipient.address, 12)}
+                </p>
+              </div>
+            )}
+            {recipient && !isAdaHandle(recipient) && !isValidAddress && !isResolvingHandle && (
               <p className="text-sm text-red-500 mt-1">
                 Invalid {network === "mainnet" ? "mainnet" : "testnet"} address
               </p>
             )}
-            {recipient && isValidAddress && (
+            {recipient && !isAdaHandle(recipient) && isValidAddress && (
               <p className="text-sm text-green-500 mt-1 flex items-center gap-1">
                 <CheckIcon className="w-4 h-4" /> Valid address
               </p>
@@ -601,8 +708,13 @@ export const SendScreen: React.FC<SendScreenProps> = ({ onBack, onSuccess }) => 
 
             <div className="bg-gray-50 dark:bg-gray-900 rounded-xl p-4">
               <p className="text-xs text-gray-500 mb-1">To</p>
+              {resolvedRecipient?.isHandle && (
+                <p className="text-sm font-medium text-blue-600 dark:text-blue-400 mb-1">
+                  {resolvedRecipient.handleName}
+                </p>
+              )}
               <p className="text-sm font-mono text-gray-900 dark:text-white break-all">
-                {recipient}
+                {resolvedRecipient?.address || recipient}
               </p>
             </div>
           </div>

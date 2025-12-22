@@ -11,6 +11,287 @@ import {
   type CardanoNetwork,
 } from "./types";
 
+// ================================
+// ADA HANDLE CONFIGURATION
+// ================================
+
+// ADA Handle policy IDs for different networks
+const ADA_HANDLE_POLICY_IDS: Record<CardanoNetwork, string> = {
+  mainnet: "f0ff48bbb7bbe9d59a40f1ce90e9e9d0ff5002ec48f232b49ca0fb9a",
+  preprod: "f0ff48bbb7bbe9d59a40f1ce90e9e9d0ff5002ec48f232b49ca0fb9a",
+  preview: "f0ff48bbb7bbe9d59a40f1ce90e9e9d0ff5002ec48f232b49ca0fb9a",
+};
+
+/**
+ * Check if input is an ADA Handle (starts with $)
+ */
+export const isAdaHandle = (input: string): boolean => {
+  return input.startsWith("$") && input.length > 1 && /^[a-z0-9_.-]+$/i.test(input.slice(1));
+};
+
+/**
+ * Resolve ADA Handle to Cardano address using Blockfrost
+ * 
+ * @param handle - ADA Handle (with or without $ prefix)
+ * @returns Resolved address or null if not found
+ */
+export const resolveAdaHandle = async (handle: string): Promise<string | null> => {
+  try {
+    const network = getCurrentNetwork();
+    const apiKey = getBlockfrostApiKey();
+    const baseUrl = getBlockfrostUrl();
+
+    if (!apiKey) {
+      console.warn("Blockfrost API key not set. Cannot resolve ADA Handle.");
+      return null;
+    }
+
+    // Remove $ prefix if present
+    const handleName = handle.startsWith("$") ? handle.slice(1) : handle;
+    
+    // Convert handle to hex (asset name)
+    const handleHex = Buffer.from(handleName.toLowerCase()).toString("hex");
+    
+    // Get policy ID for current network
+    const policyId = ADA_HANDLE_POLICY_IDS[network];
+    
+    // Build the asset unit
+    const assetUnit = `${policyId}${handleHex}`;
+
+    // Query Blockfrost for the asset addresses
+    const response = await fetch(
+      `${baseUrl}/assets/${assetUnit}/addresses`,
+      {
+        headers: { project_id: apiKey },
+      }
+    );
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        console.log(`ADA Handle ${handle} not found`);
+        return null;
+      }
+      throw new Error(`Blockfrost API error: ${response.status}`);
+    }
+
+    const addresses = await response.json();
+    
+    // Return the first address that holds this handle
+    if (addresses && addresses.length > 0) {
+      return addresses[0].address;
+    }
+
+    return null;
+  } catch (error) {
+    console.error("Error resolving ADA Handle:", error);
+    return null;
+  }
+};
+
+/**
+ * Resolve recipient input (address or ADA Handle)
+ * 
+ * @param input - Cardano address or ADA Handle
+ * @returns Resolved address and whether it was a handle
+ */
+export const resolveRecipient = async (input: string): Promise<{
+  address: string | null;
+  isHandle: boolean;
+  handleName?: string;
+}> => {
+  if (isAdaHandle(input)) {
+    const address = await resolveAdaHandle(input);
+    return {
+      address,
+      isHandle: true,
+      handleName: input.startsWith("$") ? input : `$${input}`,
+    };
+  }
+  
+  return {
+    address: input,
+    isHandle: false,
+  };
+};
+
+// ================================
+// COLLATERAL MANAGEMENT
+// ================================
+
+// Minimum collateral amount (5 ADA recommended for most smart contracts)
+const MIN_COLLATERAL_LOVELACE = "5000000"; // 5 ADA
+
+/**
+ * Check if wallet has suitable collateral UTxO
+ * 
+ * @param wallet - MeshWallet instance
+ * @returns Collateral info or null if not available
+ */
+export const getCollateralUtxo = async (wallet: MeshWallet): Promise<{
+  txHash: string;
+  outputIndex: number;
+  amount: string;
+} | null> => {
+  try {
+    const utxos = await wallet.getUtxos();
+    
+    if (!utxos || utxos.length === 0) {
+      return null;
+    }
+
+    // Find a suitable UTxO for collateral:
+    // - Pure ADA (no native assets)
+    // - Between 5-10 ADA (optimal for collateral)
+    for (const utxo of utxos) {
+      const hasOnlyLovelace = utxo.output.amount.length === 1 && 
+                              utxo.output.amount[0].unit === "lovelace";
+      
+      if (hasOnlyLovelace) {
+        const lovelace = BigInt(utxo.output.amount[0].quantity);
+        const minCollateral = BigInt(MIN_COLLATERAL_LOVELACE);
+        const maxCollateral = BigInt("10000000"); // 10 ADA
+        
+        if (lovelace >= minCollateral && lovelace <= maxCollateral) {
+          return {
+            txHash: utxo.input.txHash,
+            outputIndex: utxo.input.outputIndex,
+            amount: lovelace.toString(),
+          };
+        }
+      }
+    }
+
+    // If no perfect UTxO found, look for any UTxO with only ADA >= 5 ADA
+    for (const utxo of utxos) {
+      const hasOnlyLovelace = utxo.output.amount.length === 1 && 
+                              utxo.output.amount[0].unit === "lovelace";
+      
+      if (hasOnlyLovelace) {
+        const lovelace = BigInt(utxo.output.amount[0].quantity);
+        if (lovelace >= BigInt(MIN_COLLATERAL_LOVELACE)) {
+          return {
+            txHash: utxo.input.txHash,
+            outputIndex: utxo.input.outputIndex,
+            amount: lovelace.toString(),
+          };
+        }
+      }
+    }
+
+    return null;
+  } catch (error) {
+    console.error("Error getting collateral UTxO:", error);
+    return null;
+  }
+};
+
+/**
+ * Check if wallet can provide collateral for smart contract interactions
+ * 
+ * @param wallet - MeshWallet instance
+ * @returns Whether collateral is available
+ */
+export const hasCollateral = async (wallet: MeshWallet): Promise<boolean> => {
+  const collateral = await getCollateralUtxo(wallet);
+  return collateral !== null;
+};
+
+/**
+ * Create a collateral UTxO if none exists
+ * Sends 5 ADA to self to create a clean collateral UTxO
+ * 
+ * @param wallet - MeshWallet instance
+ * @returns Transaction result
+ */
+export const setupCollateral = async (wallet: MeshWallet): Promise<{
+  success: boolean;
+  txHash?: string;
+  error?: string;
+}> => {
+  try {
+    // Check if collateral already exists
+    const existingCollateral = await getCollateralUtxo(wallet);
+    if (existingCollateral) {
+      return { success: true, txHash: "already_setup" };
+    }
+
+    // Get wallet address and UTxOs
+    const changeAddress = await wallet.getChangeAddress();
+    const utxos = await wallet.getUtxos();
+
+    if (!utxos || utxos.length === 0) {
+      return { success: false, error: "No UTxOs available" };
+    }
+
+    // Calculate total ADA balance
+    let totalLovelace = BigInt(0);
+    for (const utxo of utxos) {
+      for (const amount of utxo.output.amount) {
+        if (amount.unit === "lovelace") {
+          totalLovelace += BigInt(amount.quantity);
+        }
+      }
+    }
+
+    // Need at least 7 ADA (5 for collateral + ~2 for fee and minimum UTxO)
+    if (totalLovelace < BigInt("7000000")) {
+      return { success: false, error: "Insufficient funds to setup collateral (need at least 7 ADA)" };
+    }
+
+    // Create provider for transaction builder
+    const provider = createBlockfrostProvider();
+
+    // Build transaction to send 5 ADA to self (creating collateral UTxO)
+    const txBuilder = new MeshTxBuilder({
+      fetcher: provider,
+      submitter: provider,
+      verbose: false,
+    });
+
+    const unsignedTx = await txBuilder
+      .txOut(changeAddress, [{ unit: "lovelace", quantity: MIN_COLLATERAL_LOVELACE }])
+      .changeAddress(changeAddress)
+      .selectUtxosFrom(utxos)
+      .complete();
+
+    // Sign and submit
+    const signedTx = await wallet.signTx(unsignedTx);
+    const txHash = await wallet.submitTx(signedTx);
+
+    return { success: true, txHash };
+  } catch (error) {
+    console.error("Error setting up collateral:", error);
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : "Failed to setup collateral" 
+    };
+  }
+};
+
+/**
+ * Get collateral status for dApp interactions
+ */
+export interface CollateralStatus {
+  hasCollateral: boolean;
+  collateralUtxo: {
+    txHash: string;
+    outputIndex: number;
+    amount: string;
+  } | null;
+  recommendedAmount: string;
+  isEnabled: boolean;
+}
+
+export const getCollateralStatus = async (wallet: MeshWallet): Promise<CollateralStatus> => {
+  const collateral = await getCollateralUtxo(wallet);
+  return {
+    hasCollateral: collateral !== null,
+    collateralUtxo: collateral,
+    recommendedAmount: lovelaceToAda(MIN_COLLATERAL_LOVELACE),
+    isEnabled: collateral !== null,
+  };
+};
+
 /**
  * Wallet wrapper interface
  */

@@ -34,3 +34,6 @@ export type { NetworkSelectorProps } from "./NetworkSelector";
 
 export { CurrencySelector } from "./CurrencySelector";
 export type { CurrencySelectorProps } from "./CurrencySelector";
+
+export { CollateralManager } from "./CollateralManager";
+export type { CollateralManagerProps } from "./CollateralManager";
