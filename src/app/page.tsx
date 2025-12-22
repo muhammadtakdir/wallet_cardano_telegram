@@ -4,12 +4,23 @@ import * as React from "react";
 import { useWalletStore, useTelegram } from "@/hooks";
 import { hasStoredWallet, getWalletsList } from "@/lib/storage";
 import { isLockedOut, getLockoutRemaining } from "@/lib/storage/encryption";
-import { WalletDashboard, MnemonicDisplay } from "@/components/wallet";
+import { WalletDashboard, MnemonicDisplay, MnemonicInput } from "@/components/wallet";
 import { Card, Button, PinInput, Input } from "@/components/ui";
 
-type AppView = "loading" | "setup" | "create" | "import" | "backup" | "unlock" | "dashboard";
+type AppView = "loading" | "setup" | "create" | "import" | "import-pin" | "backup" | "unlock" | "dashboard";
+
+// Hydration safe hook - prevents SSR mismatch
+function useHydrated() {
+  const [hydrated, setHydrated] = React.useState(false);
+  React.useEffect(() => {
+    setHydrated(true);
+  }, []);
+  return hydrated;
+}
 
 export default function WalletPage() {
+  const hydrated = useHydrated();
+  
   const {
     isLoggedIn,
     isLoading,
@@ -167,8 +178,8 @@ export default function WalletPage() {
     }
   };
 
-  // Render loading
-  if (view === "loading") {
+  // Render loading - also for hydration
+  if (view === "loading" || !hydrated) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
         <div className="text-center">
@@ -305,7 +316,7 @@ export default function WalletPage() {
     );
   }
 
-  // Render import wallet flow
+  // Render import wallet flow - Step 1: Enter mnemonic
   if (view === "import") {
     return (
       <div className="min-h-screen p-6 bg-gray-50 dark:bg-gray-900">
@@ -321,7 +332,37 @@ export default function WalletPage() {
           Import Wallet
         </h1>
         <p className="text-gray-500 dark:text-gray-400 mb-6">
-          Enter your recovery phrase
+          Enter your recovery phrase word by word
+        </p>
+
+        <MnemonicInput
+          onSubmit={(mnemonic) => {
+            setImportMnemonic(mnemonic);
+            setView("import-pin");
+          }}
+          error={error || undefined}
+        />
+      </div>
+    );
+  }
+
+  // Render import wallet flow - Step 2: Set PIN
+  if (view === "import-pin") {
+    return (
+      <div className="min-h-screen p-6 bg-gray-50 dark:bg-gray-900">
+        <button
+          onClick={() => setView("import")}
+          className="mb-6 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 flex items-center gap-1"
+        >
+          <BackIcon className="w-5 h-5" />
+          Back
+        </button>
+
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+          Secure Your Wallet
+        </h1>
+        <p className="text-gray-500 dark:text-gray-400 mb-6">
+          Set a PIN to protect your wallet
         </p>
 
         <Card padding="lg" className="space-y-6">
@@ -331,14 +372,6 @@ export default function WalletPage() {
             value={walletName}
             onChange={(e) => setWalletName(e.target.value)}
             helperText="Give your wallet a name for easy identification"
-          />
-
-          <Input
-            label="Recovery Phrase"
-            placeholder="Enter your 12, 15, 18, 21, or 24 word phrase"
-            value={importMnemonic}
-            onChange={(e) => setImportMnemonic(e.target.value)}
-            helperText="Separate words with spaces"
           />
 
           <div>
@@ -371,7 +404,7 @@ export default function WalletPage() {
             fullWidth
             onClick={handleImportWallet}
             isLoading={isLoading}
-            disabled={!importMnemonic.trim() || pin.length < 6 || confirmPin.length < 6}
+            disabled={pin.length < 6 || confirmPin.length < 6}
           >
             Import Wallet
           </Button>

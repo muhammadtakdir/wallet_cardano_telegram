@@ -133,7 +133,7 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
                   : "text-red-600 dark:text-red-400"
               }`}
             >
-              {isIncoming ? "+" : "-"}{amount} ADA
+              {isIncoming ? "+" : "-"}{String(amount)} ADA
             </span>
           )}
         </div>

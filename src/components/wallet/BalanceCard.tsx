@@ -57,7 +57,7 @@ export const BalanceCard: React.FC<BalanceCardProps> = ({
         <span
           className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium text-white ${networkColors[network]}`}
         >
-          {network}
+          {String(network)}
         </span>
       </div>
 
@@ -136,10 +136,10 @@ export const BalanceCard: React.FC<BalanceCardProps> = ({
                 className="flex items-center justify-between text-sm"
               >
                 <span className="text-gray-600 dark:text-gray-400 truncate max-w-[60%]">
-                  {asset.unit.slice(0, 20)}...
+                  {String(asset.unit || "").slice(0, 20)}...
                 </span>
                 <span className="font-medium text-gray-900 dark:text-white">
-                  {asset.quantity}
+                  {String(asset.quantity || "0")}
                 </span>
               </div>
             ))}

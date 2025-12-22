@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Card, Button } from "@/components/ui";
+import { Card, Button, Input } from "@/components/ui";
 
 export interface MnemonicDisplayProps {
   mnemonic: string;
@@ -9,20 +9,44 @@ export interface MnemonicDisplayProps {
   showCopyButton?: boolean;
   title?: string;
   warning?: string;
+  requireVerification?: boolean; // New: require word verification before continue
+  verificationWordCount?: number; // New: how many words to verify (default 3)
 }
 
 export const MnemonicDisplay: React.FC<MnemonicDisplayProps> = ({
   mnemonic,
   onConfirmed,
-  showCopyButton = false, // Disabled by default for security - clipboard can be intercepted
+  showCopyButton = false,
   title = "Your Recovery Phrase",
   warning = "Write down these words in order and keep them safe. Anyone with this phrase can access your funds. NEVER share this with anyone!",
+  requireVerification = true,
+  verificationWordCount = 3,
 }) => {
   const [copied, setCopied] = React.useState(false);
   const [confirmed, setConfirmed] = React.useState(false);
   const [revealed, setRevealed] = React.useState(false);
+  const [showVerification, setShowVerification] = React.useState(false);
+  const [verificationInputs, setVerificationInputs] = React.useState<Record<number, string>>({});
+  const [verificationError, setVerificationError] = React.useState<string | null>(null);
 
   const words = mnemonic.split(" ");
+
+  // Generate random word indices for verification
+  const [verificationIndices, setVerificationIndices] = React.useState<number[]>([]);
+  
+  React.useEffect(() => {
+    // Generate random indices when component mounts
+    const indices: number[] = [];
+    const availableIndices = Array.from({ length: words.length }, (_, i) => i);
+    
+    for (let i = 0; i < verificationWordCount && availableIndices.length > 0; i++) {
+      const randomIndex = Math.floor(Math.random() * availableIndices.length);
+      indices.push(availableIndices[randomIndex]);
+      availableIndices.splice(randomIndex, 1);
+    }
+    
+    setVerificationIndices(indices.sort((a, b) => a - b));
+  }, [words.length, verificationWordCount]);
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(mnemonic);
@@ -30,10 +54,103 @@ export const MnemonicDisplay: React.FC<MnemonicDisplayProps> = ({
     setTimeout(() => setCopied(false), 3000);
   };
 
-  const handleConfirm = () => {
-    setConfirmed(true);
-    onConfirmed?.();
+  const handleProceedToVerification = () => {
+    if (requireVerification) {
+      setShowVerification(true);
+      setVerificationError(null);
+    } else {
+      onConfirmed?.();
+    }
   };
+
+  const handleVerificationInputChange = (index: number, value: string) => {
+    setVerificationInputs((prev) => ({
+      ...prev,
+      [index]: value.toLowerCase().trim(),
+    }));
+    setVerificationError(null);
+  };
+
+  const handleVerifyAndContinue = () => {
+    // Check all verification words
+    const allCorrect = verificationIndices.every(
+      (wordIndex) => verificationInputs[wordIndex]?.toLowerCase().trim() === words[wordIndex].toLowerCase()
+    );
+
+    if (allCorrect) {
+      setVerificationError(null);
+      onConfirmed?.();
+    } else {
+      setVerificationError("One or more words are incorrect. Please check and try again.");
+    }
+  };
+
+  const allVerificationFilled = verificationIndices.every(
+    (index) => verificationInputs[index]?.length > 0
+  );
+
+  // Verification Screen
+  if (showVerification) {
+    return (
+      <Card variant="elevated" padding="lg">
+        <div className="text-center mb-4">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+            Verify Your Recovery Phrase
+          </h3>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+            Enter the following words from your recovery phrase to confirm you&apos;ve saved it
+          </p>
+        </div>
+
+        <div className="space-y-4 mb-6">
+          {verificationIndices.map((wordIndex) => (
+            <div key={wordIndex}>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Word #{wordIndex + 1}
+              </label>
+              <input
+                type="text"
+                value={verificationInputs[wordIndex] || ""}
+                onChange={(e) => handleVerificationInputChange(wordIndex, e.target.value)}
+                placeholder={`Enter word #${wordIndex + 1}`}
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck={false}
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+          ))}
+        </div>
+
+        {verificationError && (
+          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-3 mb-4">
+            <p className="text-sm text-red-600 dark:text-red-400 text-center">
+              {verificationError}
+            </p>
+          </div>
+        )}
+
+        <div className="space-y-3">
+          <Button
+            variant="primary"
+            fullWidth
+            onClick={handleVerifyAndContinue}
+            disabled={!allVerificationFilled}
+          >
+            Verify & Continue
+          </Button>
+          <Button
+            variant="outline"
+            fullWidth
+            onClick={() => setShowVerification(false)}
+          >
+            ← Back to Recovery Phrase
+          </Button>
+        </div>
+      </Card>
+    );
+  }
 
   return (
     <Card variant="elevated" padding="lg">
@@ -127,9 +244,9 @@ export const MnemonicDisplay: React.FC<MnemonicDisplayProps> = ({
               variant="primary"
               fullWidth
               disabled={!confirmed}
-              onClick={handleConfirm}
+              onClick={handleProceedToVerification}
             >
-              Continue
+              {requireVerification ? "I've Written It Down →" : "Continue"}
             </Button>
           </div>
         )}

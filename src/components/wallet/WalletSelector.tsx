@@ -226,7 +226,7 @@ export const WalletSelector: React.FC<WalletSelectorProps> = ({
                 >
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
-                      <span className="text-white font-medium">{wallet.name}</span>
+                      <span className="text-white font-medium">{String(wallet.name || "Unnamed Wallet")}</span>
                       {wallet.id === activeWalletId && (
                         <span className="text-xs bg-blue-500 text-white px-2 py-0.5 rounded-full">
                           Active
@@ -238,7 +238,7 @@ export const WalletSelector: React.FC<WalletSelectorProps> = ({
                         className="text-gray-400 hover:text-white p-1"
                         onClick={(e) => {
                           e.stopPropagation();
-                          handleRename(wallet.id, wallet.name);
+                          handleRename(wallet.id, String(wallet.name || ""));
                         }}
                       >
                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -261,7 +261,7 @@ export const WalletSelector: React.FC<WalletSelectorProps> = ({
                     </div>
                   </div>
                   <p className="text-gray-400 text-xs font-mono">
-                    {formatAddress(wallet.address)}
+                    {formatAddress(String(wallet.address || ""))}
                   </p>
                   <p className="text-gray-500 text-xs mt-1">
                     Created: {wallet.createdAt ? new Date(wallet.createdAt).toLocaleDateString() : 'Unknown'}

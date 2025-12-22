@@ -5,6 +5,7 @@ import { useWalletStore, useTelegram } from "@/hooks";
 import { BalanceCard, TransactionList } from "@/components/wallet";
 import { WalletSelector } from "@/components/wallet/WalletSelector";
 import { Button } from "@/components/ui";
+import { debugLogObject, safeString } from "@/lib/utils/safeRender";
 
 interface WalletDashboardProps {
   onSend?: () => void;
@@ -35,15 +36,23 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
   // Debug logging
   React.useEffect(() => {
     console.log("=== WalletDashboard Debug ===");
-    console.log("walletAddress:", walletAddress, typeof walletAddress);
-    console.log("walletName:", walletName, typeof walletName);
-    console.log("balance:", balance);
-    console.log("balance?.ada:", balance?.ada, typeof balance?.ada);
-    console.log("balance?.lovelace:", balance?.lovelace, typeof balance?.lovelace);
-    console.log("transactions:", transactions);
-    console.log("network:", network, typeof network);
-    console.log("isLoading:", isLoading);
-    console.log("wallets:", wallets);
+    debugLogObject("WalletData", {
+      walletAddress,
+      walletName,
+      balanceAda: balance?.ada,
+      balanceLovelace: balance?.lovelace,
+      balanceAssets: balance?.assets,
+      transactionsCount: transactions?.length,
+      network,
+      isLoading,
+      walletsCount: wallets?.length,
+    });
+    
+    // Check wallets array contents
+    if (wallets && wallets.length > 0) {
+      console.log("=== First Wallet Details ===");
+      debugLogObject("Wallet[0]", wallets[0] as unknown as Record<string, unknown>);
+    }
     console.log("=== End Debug ===");
   }, [walletAddress, walletName, balance, transactions, network, isLoading, wallets]);
 
@@ -100,11 +109,11 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
             <WalletIcon className="w-6 h-6 text-blue-600" />
             <div className="text-left">
               <h1 className="text-lg font-semibold text-gray-900 dark:text-white leading-tight">
-                {walletName || "Cardano Wallet"}
+                {safeString(walletName, "Cardano Wallet")}
               </h1>
-              {wallets.length > 1 && (
+              {wallets && wallets.length > 1 && (
                 <span className="text-xs text-gray-500">
-                  {wallets.length} wallets
+                  {safeString(wallets.length)} wallets
                 </span>
               )}
             </div>

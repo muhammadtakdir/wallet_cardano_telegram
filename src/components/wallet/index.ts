@@ -4,6 +4,9 @@ export type { BalanceCardProps } from "./BalanceCard";
 export { MnemonicDisplay } from "./MnemonicDisplay";
 export type { MnemonicDisplayProps } from "./MnemonicDisplay";
 
+export { MnemonicInput } from "./MnemonicInput";
+export type { MnemonicInputProps } from "./MnemonicInput";
+
 export { TransactionList } from "./TransactionList";
 export type { TransactionListProps } from "./TransactionList";
 

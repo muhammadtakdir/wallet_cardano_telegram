@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
+import { useShallow } from "zustand/react/shallow";
 import { MeshWallet } from "@meshsdk/core";
 import {
   createWalletFromMnemonic,
@@ -539,34 +540,40 @@ export const useWalletStatus = () => {
 
 /**
  * Selector for just the essential wallet data
+ * Uses useShallow to prevent infinite re-renders
  */
 export const useWalletData = () => {
-  return useWalletStore((state) => ({
-    isLoggedIn: state.isLoggedIn,
-    walletAddress: state.walletAddress,
-    walletName: state.walletName,
-    balance: state.balance,
-    network: state.network,
-    wallets: state.wallets,
-    activeWalletId: state.activeWalletId,
-  }));
+  return useWalletStore(
+    useShallow((state) => ({
+      isLoggedIn: state.isLoggedIn,
+      walletAddress: state.walletAddress,
+      walletName: state.walletName,
+      balance: state.balance,
+      network: state.network,
+      wallets: state.wallets,
+      activeWalletId: state.activeWalletId,
+    }))
+  );
 };
 
 /**
  * Selector for wallet actions
+ * Uses useShallow to prevent infinite re-renders
  */
 export const useWalletActions = () => {
-  return useWalletStore((state) => ({
-    createNewWallet: state.createNewWallet,
-    importWallet: state.importWallet,
-    unlockWallet: state.unlockWallet,
-    lockWallet: state.lockWallet,
-    switchWallet: state.switchWallet,
-    deleteWallet: state.deleteWallet,
-    deleteAllWallets: state.deleteAllWallets,
-    renameWallet: state.renameWallet,
-    refreshBalance: state.refreshBalance,
-    refreshTransactions: state.refreshTransactions,
-    refreshWalletsList: state.refreshWalletsList,
-  }));
+  return useWalletStore(
+    useShallow((state) => ({
+      createNewWallet: state.createNewWallet,
+      importWallet: state.importWallet,
+      unlockWallet: state.unlockWallet,
+      lockWallet: state.lockWallet,
+      switchWallet: state.switchWallet,
+      deleteWallet: state.deleteWallet,
+      deleteAllWallets: state.deleteAllWallets,
+      renameWallet: state.renameWallet,
+      refreshBalance: state.refreshBalance,
+      refreshTransactions: state.refreshTransactions,
+      refreshWalletsList: state.refreshWalletsList,
+    }))
+  );
 };
