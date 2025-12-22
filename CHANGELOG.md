@@ -16,6 +16,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Badges displayed next to transaction type text
   - Support for dark mode styling
 
+- **Clickable Native Assets in Balance Card**:
+  - Each asset now shows icon (Token/NFT), name, and badge
+  - Click to view full asset details
+  - Shows decoded readable name instead of hex
+  - Token icon (blue) or NFT icon (purple) based on type
+
+- **Asset Detail External Links**:
+  - Link to CardanoScan for all networks
+  - Link to Pool.pm (mainnet only)
+  - Link to JPG Store for NFTs (mainnet only)
+
 ### Improved
 - **Transaction Amount Display**: Now shows actual ADA amounts
   - Calculates net amount from UTxO inputs/outputs
@@ -32,7 +43,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - `wallet.ts` - `getTransactionHistory()` now fetches UTxO details to calculate direction and amount
 - `TransactionList.tsx` - Added IN/OUT badges, displays amount with +/- prefix
-- `BalanceCard.tsx` - Added `decodeAssetName()` function for asset name display
+- `BalanceCard.tsx` - Added `decodeAssetName()`, `onAssetClick`, asset icons and badges
+- `AssetDetail.tsx` - Added external explorer links (CardanoScan, Pool.pm, JPG Store)
+- `WalletDashboard.tsx` - Pass `onAssetClick` to BalanceCard
+- `page.tsx` - Added asset-detail view and navigation
 
 ---
 

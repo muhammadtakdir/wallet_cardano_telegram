@@ -65,6 +65,7 @@ export interface BalanceCardProps {
   isLoading?: boolean;
   onRefresh?: () => void;
   onCopyAddress?: () => void;
+  onAssetClick?: (asset: WalletAsset) => void;
 }
 
 export const BalanceCard: React.FC<BalanceCardProps> = ({
@@ -74,6 +75,7 @@ export const BalanceCard: React.FC<BalanceCardProps> = ({
   isLoading = false,
   onRefresh,
   onCopyAddress,
+  onAssetClick,
 }) => {
   const [copied, setCopied] = React.useState(false);
   const [isBalanceHidden, setIsBalanceHidden] = React.useState(false);
@@ -305,23 +307,80 @@ export const BalanceCard: React.FC<BalanceCardProps> = ({
         {/* Assets Preview */}
         {balance && balance.assets.length > 0 && (
           <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-            <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
               Native Assets ({balance.assets.length})
             </p>
-            <div className="space-y-2 max-h-32 overflow-y-auto">
-              {balance.assets.slice(0, 5).map((asset, index) => (
-                <div
-                  key={index}
-                  className="flex items-center justify-between text-sm"
-                >
-                  <span className="text-gray-600 dark:text-gray-400 truncate max-w-[60%]">
-                    {decodeAssetName(asset)}
-                  </span>
-                  <span className="font-medium text-gray-900 dark:text-white">
-                    {isBalanceHidden ? "••••" : String(asset.quantity || "0")}
-                  </span>
-                </div>
-              ))}
+            <div className="space-y-2 max-h-48 overflow-y-auto">
+              {balance.assets.slice(0, 5).map((asset, index) => {
+                const isNFT = asset.quantity === "1";
+                return (
+                  <div
+                    key={index}
+                    className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer transition-colors"
+                    onClick={() => onAssetClick?.(asset)}
+                  >
+                    {/* Asset Icon */}
+                    <div className={`
+                      w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 overflow-hidden
+                      ${isNFT 
+                        ? "bg-purple-100 dark:bg-purple-900/30" 
+                        : "bg-blue-100 dark:bg-blue-900/30"
+                      }
+                    `}>
+                      {asset.metadata?.logo ? (
+                        <img
+                          src={asset.metadata.logo}
+                          alt={decodeAssetName(asset)}
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display = "none";
+                          }}
+                        />
+                      ) : isNFT ? (
+                        <NFTIcon className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+                      ) : (
+                        <TokenIcon className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                      )}
+                    </div>
+                    
+                    {/* Asset Info */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-gray-900 dark:text-white truncate">
+                          {decodeAssetName(asset)}
+                        </span>
+                        <span className={`
+                          text-[10px] font-bold px-1.5 py-0.5 rounded flex-shrink-0
+                          ${isNFT 
+                            ? "bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300" 
+                            : "bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300"
+                          }
+                        `}>
+                          {isNFT ? "NFT" : "Token"}
+                        </span>
+                      </div>
+                      {asset.metadata?.ticker && (
+                        <span className="text-xs text-gray-500 dark:text-gray-400">
+                          ${asset.metadata.ticker}
+                        </span>
+                      )}
+                    </div>
+                    
+                    {/* Quantity & Arrow */}
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-gray-900 dark:text-white">
+                        {isBalanceHidden ? "••••" : String(asset.quantity || "0")}
+                      </span>
+                      <ChevronRightIcon className="w-4 h-4 text-gray-400" />
+                    </div>
+                  </div>
+                );
+              })}
+              {balance.assets.length > 5 && (
+                <p className="text-xs text-center text-gray-500 dark:text-gray-400 pt-2">
+                  +{balance.assets.length - 5} more assets
+                </p>
+              )}
             </div>
           </div>
         )}
@@ -370,6 +429,24 @@ const CheckIcon: React.FC<{ className?: string }> = ({ className }) => (
       strokeWidth={2}
       d="M5 13l4 4L19 7"
     />
+  </svg>
+);
+
+const TokenIcon: React.FC<{ className?: string }> = ({ className }) => (
+  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+  </svg>
+);
+
+const NFTIcon: React.FC<{ className?: string }> = ({ className }) => (
+  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+  </svg>
+);
+
+const ChevronRightIcon: React.FC<{ className?: string }> = ({ className }) => (
+  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
   </svg>
 );
 

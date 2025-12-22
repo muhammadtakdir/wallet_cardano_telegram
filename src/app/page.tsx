@@ -4,10 +4,11 @@ import * as React from "react";
 import { useWalletStore, useTelegram } from "@/hooks";
 import { hasStoredWallet, getWalletsList } from "@/lib/storage";
 import { isLockedOut, getLockoutRemaining } from "@/lib/storage/encryption";
-import { WalletDashboard, MnemonicDisplay, MnemonicInput, SendScreen, ReceiveScreen } from "@/components/wallet";
+import { WalletDashboard, MnemonicDisplay, MnemonicInput, SendScreen, ReceiveScreen, AssetDetail } from "@/components/wallet";
 import { Card, Button, PinInput, Input } from "@/components/ui";
+import { WalletAsset } from "@/lib/cardano";
 
-type AppView = "loading" | "setup" | "create" | "import" | "import-pin" | "backup" | "unlock" | "dashboard" | "send" | "receive";
+type AppView = "loading" | "setup" | "create" | "import" | "import-pin" | "backup" | "unlock" | "dashboard" | "send" | "receive" | "asset-detail";
 
 // Hydration safe hook - prevents SSR mismatch
 function useHydrated() {
@@ -42,6 +43,7 @@ export default function WalletPage() {
   const [pinError, setPinError] = React.useState("");
   const [walletName, setWalletName] = React.useState("");
   const [isAddingWallet, setIsAddingWallet] = React.useState(false);
+  const [selectedAsset, setSelectedAsset] = React.useState<WalletAsset | null>(null);
 
   // Initialize Telegram WebApp
   React.useEffect(() => {
@@ -519,6 +521,23 @@ export default function WalletPage() {
     return <ReceiveScreen onBack={() => setView("dashboard")} />;
   }
 
+  // Render asset detail screen
+  if (view === "asset-detail" && selectedAsset) {
+    return (
+      <AssetDetail
+        asset={selectedAsset}
+        onBack={() => {
+          setSelectedAsset(null);
+          setView("dashboard");
+        }}
+        onSend={() => {
+          // TODO: Pre-select this asset in SendScreen
+          setView("send");
+        }}
+      />
+    );
+  }
+
   // Render dashboard
   if (view === "dashboard") {
     return (
@@ -531,6 +550,11 @@ export default function WalletPage() {
         onReceive={() => {
           console.log("page.tsx: onReceive called, setting view to receive");
           setView("receive");
+        }}
+        onAssetClick={(asset) => {
+          console.log("page.tsx: onAssetClick called", asset);
+          setSelectedAsset(asset);
+          setView("asset-detail");
         }}
       />
     );

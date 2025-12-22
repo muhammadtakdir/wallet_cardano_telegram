@@ -6,13 +6,14 @@ import { BalanceCard, TransactionList, NetworkSelector } from "@/components/wall
 import { WalletSelector } from "@/components/wallet/WalletSelector";
 import { Button } from "@/components/ui";
 import { debugLogObject, safeString } from "@/lib/utils/safeRender";
-import { type CardanoNetwork } from "@/lib/cardano";
+import { type CardanoNetwork, WalletAsset } from "@/lib/cardano";
 
 interface WalletDashboardProps {
   onSend?: () => void;
   onReceive?: () => void;
   onSettings?: () => void;
   onAddWallet?: () => void;
+  onAssetClick?: (asset: WalletAsset) => void;
 }
 
 export const WalletDashboard: React.FC<WalletDashboardProps> = ({
@@ -20,6 +21,7 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
   onReceive,
   onSettings,
   onAddWallet,
+  onAssetClick,
 }) => {
   const {
     walletAddress,
@@ -183,6 +185,7 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
           isLoading={isLoading || isRefreshing}
           onRefresh={handleRefresh}
           onCopyAddress={handleCopyAddress}
+          onAssetClick={onAssetClick}
         />
 
         {/* Action Buttons */}

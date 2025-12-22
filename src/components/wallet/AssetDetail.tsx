@@ -2,7 +2,32 @@
 
 import * as React from "react";
 import { Card, Button } from "@/components/ui";
-import { WalletAsset, shortenAddress } from "@/lib/cardano";
+import { WalletAsset, shortenAddress, getCardanoNetwork, type CardanoNetwork } from "@/lib/cardano";
+
+// Get explorer URLs based on network
+function getExplorerUrls(network: CardanoNetwork, policyId: string, assetName?: string) {
+  const assetId = assetName ? `${policyId}${assetName}` : policyId;
+  
+  if (network === "mainnet") {
+    return {
+      cardanoscan: `https://cardanoscan.io/token/${assetId}`,
+      poolpm: `https://pool.pm/asset/${assetId}`,
+      jpgStore: `https://www.jpg.store/asset/${assetId}`,
+    };
+  } else if (network === "preprod") {
+    return {
+      cardanoscan: `https://preprod.cardanoscan.io/token/${assetId}`,
+      poolpm: null,
+      jpgStore: null,
+    };
+  } else {
+    return {
+      cardanoscan: `https://preview.cardanoscan.io/token/${assetId}`,
+      poolpm: null,
+      jpgStore: null,
+    };
+  }
+}
 
 export interface AssetDetailProps {
   asset: WalletAsset;
@@ -12,6 +37,7 @@ export interface AssetDetailProps {
 
 export const AssetDetail: React.FC<AssetDetailProps> = ({ asset, onBack, onSend }) => {
   const [copied, setCopied] = React.useState<string | null>(null);
+  const network = getCardanoNetwork();
 
   const isNFT = asset.quantity === "1";
   
@@ -266,6 +292,70 @@ export const AssetDetail: React.FC<AssetDetailProps> = ({ asset, onBack, onSend 
           )}
         </Card>
 
+        {/* External Links */}
+        {(() => {
+          const explorerUrls = getExplorerUrls(network, policyId, asset.assetName || asset.unit.slice(56));
+          return (
+            <Card padding="lg" className="space-y-3">
+              <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">
+                View on Explorer
+              </h3>
+              
+              {/* CardanoScan */}
+              <a
+                href={explorerUrls.cardanoscan}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-900 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+                    <ExternalLinkIcon className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                  </div>
+                  <span className="font-medium text-gray-900 dark:text-white">CardanoScan</span>
+                </div>
+                <ChevronRightIcon className="w-5 h-5 text-gray-400" />
+              </a>
+
+              {/* Pool.pm (Mainnet only) */}
+              {explorerUrls.poolpm && (
+                <a
+                  href={explorerUrls.poolpm}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-900 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
+                      <ExternalLinkIcon className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                    </div>
+                    <span className="font-medium text-gray-900 dark:text-white">Pool.pm</span>
+                  </div>
+                  <ChevronRightIcon className="w-5 h-5 text-gray-400" />
+                </a>
+              )}
+
+              {/* JPG Store (NFT on Mainnet only) */}
+              {isNFT && explorerUrls.jpgStore && (
+                <a
+                  href={explorerUrls.jpgStore}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-900 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-pink-100 dark:bg-pink-900/30 flex items-center justify-center">
+                      <NFTIcon className="w-4 h-4 text-pink-600 dark:text-pink-400" />
+                    </div>
+                    <span className="font-medium text-gray-900 dark:text-white">JPG Store</span>
+                  </div>
+                  <ChevronRightIcon className="w-5 h-5 text-gray-400" />
+                </a>
+              )}
+            </Card>
+          );
+        })()}
+
         {/* Action Buttons */}
         {onSend && (
           <Button
@@ -317,6 +407,18 @@ const TokenIcon: React.FC<{ className?: string }> = ({ className }) => (
 const NFTIcon: React.FC<{ className?: string }> = ({ className }) => (
   <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+  </svg>
+);
+
+const ExternalLinkIcon: React.FC<{ className?: string }> = ({ className }) => (
+  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+  </svg>
+);
+
+const ChevronRightIcon: React.FC<{ className?: string }> = ({ className }) => (
+  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
   </svg>
 );
 
