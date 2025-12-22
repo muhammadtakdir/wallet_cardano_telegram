@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { Card, Button } from "@/components/ui";
-import { WalletAsset, shortenAddress, getCardanoNetwork, type CardanoNetwork } from "@/lib/cardano";
+import { WalletAsset, shortenAddress, getCurrentNetwork, type CardanoNetwork } from "@/lib/cardano";
 
 // Get explorer URLs based on network
 function getExplorerUrls(network: CardanoNetwork, policyId: string, assetName?: string) {
@@ -37,7 +37,7 @@ export interface AssetDetailProps {
 
 export const AssetDetail: React.FC<AssetDetailProps> = ({ asset, onBack, onSend }) => {
   const [copied, setCopied] = React.useState<string | null>(null);
-  const network = getCardanoNetwork();
+  const network = getCurrentNetwork();
 
   const isNFT = asset.quantity === "1";
   
