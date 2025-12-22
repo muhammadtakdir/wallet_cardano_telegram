@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.3.5] - 2024-12-22 - Send Native Tokens & NFTs 🪙
+
+### Added
+- **Asset Selection Screen**: Choose which asset to send
+  - List all sendable assets (ADA, tokens, NFTs)
+  - ADA displayed first with ₳ symbol
+  - Native tokens with green icon
+  - NFTs with purple icon and "NFT" badge
+  - Display balance for each asset
+  - Policy ID preview for native assets
+
+- **Send Native Tokens**: Full support for fungible tokens
+  - Select any token from your wallet
+  - Input custom amount to send
+  - MAX button to send entire balance
+  - Automatic fee + UTxO calculation (~2 ADA needed)
+
+- **Send NFTs**: Full support for non-fungible tokens
+  - NFTs auto-detected (quantity = 1)
+  - Amount locked to 1 (whole unit only)
+  - Clear indication "NFTs can only be sent as a whole unit"
+
+- **Improved Send UX**:
+  - "Change" button to switch selected asset
+  - Selected asset info displayed at top of input form
+  - Better MAX button styling
+  - Detailed fee breakdown (Network Fee + Min UTxO)
+
+### Changed
+- `SendScreen.tsx` - Complete rewrite with multi-step asset selection flow
+  - Step 1: Select Asset (ADA/Token/NFT)
+  - Step 2: Input recipient & amount
+  - Step 3: Confirm transaction details
+  - Step 4: PIN verification
+  - Step 5: Sending/Success/Error
+
+- Uses `sendAssetTransaction()` from cardano lib for native assets
+
+---
+
 ## [0.3.4] - 2024-12-22 - Balance Privacy & Currency Conversion 💱
 
 ### Added

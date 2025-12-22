@@ -1,9 +1,9 @@
 "use client";
 
 import * as React from "react";
-import { Card, Button, Input, PinInput } from "@/components/ui";
+import { Card, Button, PinInput } from "@/components/ui";
 import { useWalletStore } from "@/hooks";
-import { shortenAddress, lovelaceToAda, adaToLovelace } from "@/lib/cardano";
+import { shortenAddress, adaToLovelace, WalletAsset } from "@/lib/cardano";
 import { verifyPin, getStoredWalletForVerification } from "@/lib/storage/encryption";
 import { QRScanner } from "./QRScanner";
 
@@ -12,35 +12,121 @@ export interface SendScreenProps {
   onSuccess?: (txHash: string) => void;
 }
 
-type SendStep = "input" | "confirm" | "pin" | "sending" | "success" | "error";
+type SendStep = "select-asset" | "input" | "confirm" | "pin" | "sending" | "success" | "error";
+
+// Asset type for selection
+interface SelectableAsset {
+  type: "ada" | "token" | "nft";
+  unit: string;
+  name: string;
+  ticker?: string;
+  quantity: string;
+  decimals: number;
+  image?: string;
+  policyId?: string;
+  assetName?: string;
+}
 
 export const SendScreen: React.FC<SendScreenProps> = ({ onBack, onSuccess }) => {
   const { walletAddress, balance, network, activeWalletId } = useWalletStore();
-  const [step, setStep] = React.useState<SendStep>("input");
+  const [step, setStep] = React.useState<SendStep>("select-asset");
+  const [selectedAsset, setSelectedAsset] = React.useState<SelectableAsset | null>(null);
   const [recipient, setRecipient] = React.useState("");
   const [amount, setAmount] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
   const [txHash, setTxHash] = React.useState<string | null>(null);
   const [isLoading, setIsLoading] = React.useState(false);
-  const [estimatedFee, setEstimatedFee] = React.useState<string>("~0.17");
+  const [estimatedFee, setEstimatedFee] = React.useState<string>("0.20");
   const [pin, setPin] = React.useState("");
   const [pinError, setPinError] = React.useState<string | null>(null);
   const [showQRScanner, setShowQRScanner] = React.useState(false);
 
-  const availableAda = React.useMemo(() => {
-    if (!balance?.ada) return 0;
-    return parseFloat(balance.ada);
+  // Decode hex asset name to readable string
+  const decodeAssetName = (name: string): string => {
+    if (!name) return "Unknown";
+    // Check if it looks like hex (all characters are 0-9 or a-f)
+    if (/^[0-9a-fA-F]+$/.test(name) && name.length > 8) {
+      try {
+        // Try to decode as hex
+        const decoded = Buffer.from(name, "hex").toString("utf8");
+        // Check if result is printable
+        if (/^[\x20-\x7E]+$/.test(decoded)) {
+          return decoded;
+        }
+      } catch {
+        // If decode fails, return original
+      }
+    }
+    return name;
+  };
+
+  // Build selectable assets list
+  const selectableAssets = React.useMemo<SelectableAsset[]>(() => {
+    const assets: SelectableAsset[] = [];
+    
+    // Add ADA as first option
+    assets.push({
+      type: "ada",
+      unit: "lovelace",
+      name: "Cardano",
+      ticker: "ADA",
+      quantity: balance?.ada || "0",
+      decimals: 6,
+    });
+    
+    // Add native assets
+    if (balance?.assets) {
+      balance.assets.forEach((asset: WalletAsset) => {
+        // Determine if NFT (quantity = 1) or fungible token
+        const isNFT = asset.quantity === "1";
+        const displayName = asset.metadata?.name || 
+                          asset.assetName || 
+                          (asset.unit ? asset.unit.slice(56) : "Unknown Token");
+        
+        assets.push({
+          type: isNFT ? "nft" : "token",
+          unit: asset.unit,
+          name: decodeAssetName(displayName),
+          ticker: asset.metadata?.ticker,
+          quantity: asset.quantity,
+          decimals: asset.metadata?.decimals || 0,
+          image: asset.metadata?.logo,
+          policyId: asset.policyId || (asset.unit ? asset.unit.slice(0, 56) : undefined),
+          assetName: asset.assetName || (asset.unit ? asset.unit.slice(56) : undefined),
+        });
+      });
+    }
+    
+    return assets;
   }, [balance]);
 
+  const availableAmount = React.useMemo(() => {
+    if (!selectedAsset) return 0;
+    return parseFloat(selectedAsset.quantity);
+  }, [selectedAsset]);
+
   const amountNum = parseFloat(amount) || 0;
-  const feeNum = parseFloat(estimatedFee) || 0.17;
-  const totalAmount = amountNum + feeNum;
-  const hasEnoughBalance = totalAmount <= availableAda;
+  const feeNum = parseFloat(estimatedFee) || 0.20;
+  
+  // For ADA, we need to subtract fee. For tokens, we need enough ADA for fee + UTxO
+  const hasEnoughBalance = React.useMemo(() => {
+    if (!selectedAsset) return false;
+    
+    if (selectedAsset.type === "ada") {
+      const totalNeeded = amountNum + feeNum + 1; // Keep 1 ADA minimum
+      return totalNeeded <= availableAmount;
+    } else {
+      // For tokens/NFTs, check if we have enough of the asset AND enough ADA for fee
+      const adaBalance = parseFloat(balance?.ada || "0");
+      const hasEnoughAsset = amountNum <= availableAmount;
+      const hasEnoughAda = adaBalance >= (feeNum + 2); // Need ~2 ADA for UTxO + fee
+      return hasEnoughAsset && hasEnoughAda;
+    }
+  }, [selectedAsset, amountNum, feeNum, availableAmount, balance?.ada]);
 
   // Validate Cardano address (basic Bech32 check)
   const isValidAddress = React.useMemo(() => {
     if (!recipient) return false;
-    // Mainnet addresses start with addr1, testnet with addr_test1
     const isMainnet = recipient.startsWith("addr1");
     const isTestnet = recipient.startsWith("addr_test1");
     const isValid = (network === "mainnet" && isMainnet) || (network !== "mainnet" && isTestnet);
@@ -49,12 +135,24 @@ export const SendScreen: React.FC<SendScreenProps> = ({ onBack, onSuccess }) => 
 
   const canProceed = isValidAddress && amountNum > 0 && hasEnoughBalance;
 
-  const handleSetMax = () => {
-    const maxAmount = Math.max(0, availableAda - feeNum - 1); // Keep 1 ADA minimum
-    setAmount(maxAmount.toFixed(6));
+  const handleSelectAsset = (asset: SelectableAsset) => {
+    setSelectedAsset(asset);
+    setAmount(asset.type === "nft" ? "1" : "");
+    setStep("input");
   };
 
-  // Handle QR scan result
+  const handleSetMax = () => {
+    if (!selectedAsset) return;
+    
+    if (selectedAsset.type === "ada") {
+      const maxAmount = Math.max(0, availableAmount - feeNum - 1); // Keep 1 ADA minimum
+      setAmount(maxAmount.toFixed(6));
+    } else {
+      // For tokens/NFTs, can send all
+      setAmount(availableAmount.toString());
+    }
+  };
+
   const handleQRScan = (scannedAddress: string) => {
     setRecipient(scannedAddress);
     setShowQRScanner(false);
@@ -75,19 +173,16 @@ export const SendScreen: React.FC<SendScreenProps> = ({ onBack, onSuccess }) => 
     setStep("confirm");
   };
 
-  // Handle confirm -> go to PIN verification
   const handleConfirm = () => {
     setPin("");
     setPinError(null);
     setStep("pin");
   };
 
-  // Handle PIN verification
   const handlePinComplete = async (enteredPin: string) => {
     setPinError(null);
     
     try {
-      // Get stored wallet to verify PIN
       const storedWallet = getStoredWalletForVerification(activeWalletId || undefined);
       
       if (!storedWallet || !storedWallet.pinHash) {
@@ -95,7 +190,6 @@ export const SendScreen: React.FC<SendScreenProps> = ({ onBack, onSuccess }) => 
         return;
       }
 
-      // Verify PIN
       const isValid = verifyPin(enteredPin, storedWallet.pinHash);
       
       if (!isValid) {
@@ -104,7 +198,6 @@ export const SendScreen: React.FC<SendScreenProps> = ({ onBack, onSuccess }) => 
         return;
       }
 
-      // PIN verified, proceed to send
       await handleSend();
     } catch (err) {
       console.error("PIN verification error:", err);
@@ -114,24 +207,39 @@ export const SendScreen: React.FC<SendScreenProps> = ({ onBack, onSuccess }) => 
   };
 
   const handleSend = async () => {
+    if (!selectedAsset) return;
+    
     setStep("sending");
     setIsLoading(true);
     setError(null);
 
     try {
-      // Import sendTransaction from cardano lib
-      const { sendTransaction } = await import("@/lib/cardano");
       const walletInstance = useWalletStore.getState()._walletInstance;
       
       if (!walletInstance) {
         throw new Error("Wallet not initialized");
       }
 
-      const result = await sendTransaction(
-        walletInstance,
-        recipient,
-        adaToLovelace(amount)
-      );
+      let result;
+      
+      if (selectedAsset.type === "ada") {
+        // Send ADA
+        const { sendTransaction } = await import("@/lib/cardano");
+        result = await sendTransaction(
+          walletInstance,
+          recipient,
+          adaToLovelace(amount)
+        );
+      } else {
+        // Send native asset (token or NFT)
+        const { sendAssetTransaction } = await import("@/lib/cardano");
+        result = await sendAssetTransaction(
+          walletInstance,
+          recipient,
+          selectedAsset.unit,
+          amount
+        );
+      }
 
       if (result.success && result.txHash) {
         setTxHash(result.txHash);
@@ -149,8 +257,21 @@ export const SendScreen: React.FC<SendScreenProps> = ({ onBack, onSuccess }) => 
     }
   };
 
-  // Input Step
-  if (step === "input") {
+  const formatQuantity = (asset: SelectableAsset) => {
+    if (asset.type === "ada") {
+      return `${parseFloat(asset.quantity).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 })} ADA`;
+    }
+    if (asset.decimals > 0) {
+      const value = parseFloat(asset.quantity) / Math.pow(10, asset.decimals);
+      return value.toLocaleString(undefined, { maximumFractionDigits: asset.decimals });
+    }
+    return asset.quantity;
+  };
+
+  // =====================
+  // STEP: Select Asset
+  // =====================
+  if (step === "select-asset") {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-4">
         <header className="flex items-center gap-3 mb-6">
@@ -161,11 +282,155 @@ export const SendScreen: React.FC<SendScreenProps> = ({ onBack, onSuccess }) => 
             <BackIcon className="w-5 h-5 text-gray-600 dark:text-gray-400" />
           </button>
           <h1 className="text-xl font-bold text-gray-900 dark:text-white">
-            Send ADA
+            Select Asset to Send
+          </h1>
+        </header>
+
+        <div className="space-y-3">
+          {selectableAssets.map((asset, index) => (
+            <Card
+              key={asset.unit + index}
+              padding="md"
+              className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+              onClick={() => handleSelectAsset(asset)}
+            >
+              <div className="flex items-center gap-4">
+                {/* Asset Icon */}
+                <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
+                  asset.type === "ada" 
+                    ? "bg-blue-100 dark:bg-blue-900/30" 
+                    : asset.type === "nft"
+                    ? "bg-purple-100 dark:bg-purple-900/30"
+                    : "bg-green-100 dark:bg-green-900/30"
+                }`}>
+                  {asset.image ? (
+                    <img 
+                      src={asset.image} 
+                      alt={asset.name} 
+                      className="w-10 h-10 rounded-full object-cover"
+                    />
+                  ) : asset.type === "ada" ? (
+                    <span className="text-2xl font-bold text-blue-600">₳</span>
+                  ) : asset.type === "nft" ? (
+                    <NFTIcon className="w-6 h-6 text-purple-600" />
+                  ) : (
+                    <TokenIcon className="w-6 h-6 text-green-600" />
+                  )}
+                </div>
+
+                {/* Asset Info */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-semibold text-gray-900 dark:text-white truncate">
+                      {asset.name}
+                    </h3>
+                    {asset.type === "nft" && (
+                      <span className="px-2 py-0.5 text-xs font-medium bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 rounded-full">
+                        NFT
+                      </span>
+                    )}
+                  </div>
+                  {asset.ticker && asset.ticker !== asset.name && (
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      {asset.ticker}
+                    </p>
+                  )}
+                  {asset.policyId && (
+                    <p className="text-xs text-gray-400 dark:text-gray-500 font-mono truncate">
+                      {asset.policyId.slice(0, 16)}...
+                    </p>
+                  )}
+                </div>
+
+                {/* Quantity */}
+                <div className="text-right">
+                  <p className="font-semibold text-gray-900 dark:text-white">
+                    {formatQuantity(asset)}
+                  </p>
+                  {asset.ticker && (
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      {asset.ticker}
+                    </p>
+                  )}
+                </div>
+
+                {/* Arrow */}
+                <ChevronRightIcon className="w-5 h-5 text-gray-400" />
+              </div>
+            </Card>
+          ))}
+
+          {selectableAssets.length === 1 && (
+            <p className="text-center text-sm text-gray-500 dark:text-gray-400 mt-4">
+              No native assets found in this wallet
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // =====================
+  // STEP: Input Amount & Recipient
+  // =====================
+  if (step === "input") {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-4">
+        <header className="flex items-center gap-3 mb-6">
+          <button
+            onClick={() => {
+              setSelectedAsset(null);
+              setAmount("");
+              setStep("select-asset");
+            }}
+            className="p-2 hover:bg-gray-200 dark:hover:bg-gray-800 rounded-lg"
+          >
+            <BackIcon className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+          </button>
+          <h1 className="text-xl font-bold text-gray-900 dark:text-white">
+            Send {selectedAsset?.ticker || selectedAsset?.name || "Asset"}
           </h1>
         </header>
 
         <Card padding="lg" className="space-y-6">
+          {/* Selected Asset Info */}
+          {selectedAsset && (
+            <div className="bg-gray-50 dark:bg-gray-900 rounded-xl p-4 flex items-center gap-4">
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                selectedAsset.type === "ada" 
+                  ? "bg-blue-100 dark:bg-blue-900/30" 
+                  : selectedAsset.type === "nft"
+                  ? "bg-purple-100 dark:bg-purple-900/30"
+                  : "bg-green-100 dark:bg-green-900/30"
+              }`}>
+                {selectedAsset.type === "ada" ? (
+                  <span className="text-xl font-bold text-blue-600">₳</span>
+                ) : selectedAsset.type === "nft" ? (
+                  <NFTIcon className="w-5 h-5 text-purple-600" />
+                ) : (
+                  <TokenIcon className="w-5 h-5 text-green-600" />
+                )}
+              </div>
+              <div className="flex-1">
+                <p className="font-medium text-gray-900 dark:text-white">
+                  {selectedAsset.name}
+                </p>
+                <p className="text-sm text-gray-500">
+                  Balance: {formatQuantity(selectedAsset)}
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setSelectedAsset(null);
+                  setStep("select-asset");
+                }}
+                className="text-sm text-blue-600 hover:text-blue-700"
+              >
+                Change
+              </button>
+            </div>
+          )}
+
           {/* Recipient Address */}
           <div>
             <div className="flex items-center justify-between mb-2">
@@ -203,13 +468,13 @@ export const SendScreen: React.FC<SendScreenProps> = ({ onBack, onSuccess }) => 
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                Amount (ADA)
+                Amount {selectedAsset?.type === "nft" ? "" : `(${selectedAsset?.ticker || selectedAsset?.name})`}
               </label>
               <button
                 onClick={handleSetMax}
-                className="text-xs text-blue-600 hover:text-blue-700"
+                className="px-3 py-1 text-xs font-medium text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/30 dark:hover:bg-blue-900/50 rounded-full transition-colors"
               >
-                Max: {availableAda.toFixed(2)} ADA
+                MAX
               </button>
             </div>
             <div className="relative">
@@ -217,32 +482,49 @@ export const SendScreen: React.FC<SendScreenProps> = ({ onBack, onSuccess }) => 
                 type="number"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
-                placeholder="0.000000"
-                step="0.000001"
+                placeholder={selectedAsset?.type === "nft" ? "1" : "0"}
+                step={selectedAsset?.decimals ? `0.${"0".repeat(selectedAsset.decimals - 1)}1` : "1"}
                 min="0"
-                className="w-full px-4 py-3 pr-16 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-lg font-semibold focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                max={availableAmount}
+                disabled={selectedAsset?.type === "nft"}
+                className="w-full px-4 py-3 pr-20 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-lg font-semibold focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-60"
               />
               <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 font-medium">
-                ADA
+                {selectedAsset?.ticker || (selectedAsset?.type === "nft" ? "NFT" : "")}
               </span>
             </div>
+            {selectedAsset?.type === "nft" && (
+              <p className="text-xs text-gray-500 mt-1">NFTs can only be sent as a whole unit</p>
+            )}
           </div>
 
           {/* Fee Estimate */}
           <div className="bg-gray-50 dark:bg-gray-900 rounded-xl p-4 space-y-2">
             <div className="flex justify-between text-sm">
               <span className="text-gray-500">Amount</span>
-              <span className="text-gray-900 dark:text-white">{amountNum.toFixed(6)} ADA</span>
+              <span className="text-gray-900 dark:text-white">
+                {amountNum} {selectedAsset?.ticker || (selectedAsset?.type === "nft" ? "NFT" : "")}
+              </span>
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-gray-500">Network Fee (est.)</span>
               <span className="text-gray-900 dark:text-white">~{estimatedFee} ADA</span>
             </div>
-            <div className="border-t border-gray-200 dark:border-gray-700 pt-2 flex justify-between font-medium">
-              <span className="text-gray-700 dark:text-gray-300">Total</span>
-              <span className={`${hasEnoughBalance ? "text-gray-900 dark:text-white" : "text-red-500"}`}>
-                {totalAmount.toFixed(6)} ADA
-              </span>
+            {selectedAsset?.type !== "ada" && (
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500">Min UTxO</span>
+                <span className="text-gray-900 dark:text-white">~1.5 ADA</span>
+              </div>
+            )}
+            <div className="border-t border-gray-200 dark:border-gray-700 pt-2">
+              <div className="flex justify-between font-medium">
+                <span className="text-gray-700 dark:text-gray-300">Total ADA needed</span>
+                <span className={`${hasEnoughBalance ? "text-gray-900 dark:text-white" : "text-red-500"}`}>
+                  ~{selectedAsset?.type === "ada" 
+                    ? (amountNum + feeNum).toFixed(6) 
+                    : (feeNum + 1.5).toFixed(2)} ADA
+                </span>
+              </div>
             </div>
             {!hasEnoughBalance && amountNum > 0 && (
               <p className="text-xs text-red-500">Insufficient balance</p>
@@ -276,7 +558,9 @@ export const SendScreen: React.FC<SendScreenProps> = ({ onBack, onSuccess }) => 
     );
   }
 
-  // Confirm Step
+  // =====================
+  // STEP: Confirm
+  // =====================
   if (step === "confirm") {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-4">
@@ -296,9 +580,11 @@ export const SendScreen: React.FC<SendScreenProps> = ({ onBack, onSuccess }) => 
           <div className="text-center py-4">
             <p className="text-sm text-gray-500 mb-1">You are sending</p>
             <p className="text-4xl font-bold text-gray-900 dark:text-white">
-              {amountNum.toFixed(6)}
+              {selectedAsset?.type === "nft" ? "1" : amountNum}
             </p>
-            <p className="text-xl text-gray-500">ADA</p>
+            <p className="text-xl text-gray-500">
+              {selectedAsset?.ticker || selectedAsset?.name || (selectedAsset?.type === "nft" ? "NFT" : "Asset")}
+            </p>
           </div>
 
           <div className="space-y-4">
@@ -332,16 +618,20 @@ export const SendScreen: React.FC<SendScreenProps> = ({ onBack, onSuccess }) => 
 
           <div className="bg-gray-50 dark:bg-gray-900 rounded-xl p-4 space-y-2">
             <div className="flex justify-between text-sm">
+              <span className="text-gray-500">Asset</span>
+              <span className="text-gray-900 dark:text-white">
+                {selectedAsset?.name}
+              </span>
+            </div>
+            <div className="flex justify-between text-sm">
               <span className="text-gray-500">Amount</span>
-              <span className="text-gray-900 dark:text-white">{amountNum.toFixed(6)} ADA</span>
+              <span className="text-gray-900 dark:text-white">
+                {amountNum} {selectedAsset?.ticker || ""}
+              </span>
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-gray-500">Network Fee</span>
               <span className="text-gray-900 dark:text-white">~{estimatedFee} ADA</span>
-            </div>
-            <div className="border-t border-gray-200 dark:border-gray-700 pt-2 flex justify-between font-medium">
-              <span className="text-gray-700 dark:text-gray-300">Total</span>
-              <span className="text-gray-900 dark:text-white">{totalAmount.toFixed(6)} ADA</span>
             </div>
           </div>
 
@@ -366,7 +656,9 @@ export const SendScreen: React.FC<SendScreenProps> = ({ onBack, onSuccess }) => 
     );
   }
 
-  // PIN Verification Step
+  // =====================
+  // STEP: PIN Verification
+  // =====================
   if (step === "pin") {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-4">
@@ -402,7 +694,9 @@ export const SendScreen: React.FC<SendScreenProps> = ({ onBack, onSuccess }) => 
           <div className="bg-gray-50 dark:bg-gray-900 rounded-xl p-4 space-y-2">
             <div className="flex justify-between text-sm">
               <span className="text-gray-500">Sending</span>
-              <span className="text-gray-900 dark:text-white font-medium">{amountNum.toFixed(6)} ADA</span>
+              <span className="text-gray-900 dark:text-white font-medium">
+                {amountNum} {selectedAsset?.ticker || selectedAsset?.name}
+              </span>
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-gray-500">To</span>
@@ -438,7 +732,9 @@ export const SendScreen: React.FC<SendScreenProps> = ({ onBack, onSuccess }) => 
     );
   }
 
-  // Sending Step
+  // =====================
+  // STEP: Sending
+  // =====================
   if (step === "sending") {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-4 flex items-center justify-center">
@@ -455,7 +751,9 @@ export const SendScreen: React.FC<SendScreenProps> = ({ onBack, onSuccess }) => 
     );
   }
 
-  // Success Step
+  // =====================
+  // STEP: Success
+  // =====================
   if (step === "success") {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-4 flex items-center justify-center">
@@ -467,7 +765,7 @@ export const SendScreen: React.FC<SendScreenProps> = ({ onBack, onSuccess }) => 
             Transaction Sent!
           </h2>
           <p className="text-gray-500 dark:text-gray-400 mb-4">
-            Your transaction has been submitted to the network.
+            Your {selectedAsset?.name || "asset"} has been sent successfully.
           </p>
           
           {txHash && (
@@ -487,7 +785,9 @@ export const SendScreen: React.FC<SendScreenProps> = ({ onBack, onSuccess }) => 
     );
   }
 
-  // Error Step
+  // =====================
+  // STEP: Error
+  // =====================
   if (step === "error") {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-4 flex items-center justify-center">
@@ -558,6 +858,24 @@ const LockIcon: React.FC<{ className?: string }> = ({ className }) => (
 const QRCodeIcon: React.FC<{ className?: string }> = ({ className }) => (
   <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+  </svg>
+);
+
+const ChevronRightIcon: React.FC<{ className?: string }> = ({ className }) => (
+  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+  </svg>
+);
+
+const TokenIcon: React.FC<{ className?: string }> = ({ className }) => (
+  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+  </svg>
+);
+
+const NFTIcon: React.FC<{ className?: string }> = ({ className }) => (
+  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
   </svg>
 );
 
