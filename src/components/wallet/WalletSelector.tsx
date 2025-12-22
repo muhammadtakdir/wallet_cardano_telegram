@@ -122,7 +122,7 @@ export const WalletSelector: React.FC<WalletSelectorProps> = ({
           />
 
           {error && (
-            <p className="text-red-500 text-sm mt-4 text-center">{error}</p>
+            <p className="text-red-500 text-sm mt-4 text-center">{String(error)}</p>
           )}
 
           <div className="flex gap-3 mt-6">

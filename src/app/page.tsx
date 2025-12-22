@@ -287,7 +287,7 @@ export default function WalletPage() {
           </div>
 
           {error && (
-            <p className="text-sm text-red-500 text-center">{error}</p>
+            <p className="text-sm text-red-500 text-center">{String(error)}</p>
           )}
 
           <Button
@@ -362,7 +362,7 @@ export default function WalletPage() {
           </div>
 
           {(error || pinError) && (
-            <p className="text-sm text-red-500 text-center">{error || pinError}</p>
+            <p className="text-sm text-red-500 text-center">{String(error || pinError)}</p>
           )}
 
           <Button

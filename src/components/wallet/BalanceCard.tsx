@@ -61,14 +61,14 @@ export const BalanceCard: React.FC<BalanceCardProps> = ({
         ) : (
           <div className="flex items-center justify-center gap-2">
             <span className="text-4xl font-bold text-gray-900 dark:text-white">
-              {balance?.ada || "0.00"}
+              {String(balance?.ada || "0.000000")}
             </span>
             <span className="text-xl text-gray-500 dark:text-gray-400">ADA</span>
           </div>
         )}
         {balance && Number(balance.lovelace) > 0 && (
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            ≈ {balance.lovelace} lovelace
+            ≈ {String(balance.lovelace)} lovelace
           </p>
         )}
       </div>

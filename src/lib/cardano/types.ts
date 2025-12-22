@@ -86,12 +86,15 @@ export interface WalletBalance {
  * Format lovelace to ADA string
  */
 export const lovelaceToAda = (lovelace: string | number): string => {
-  const value = typeof lovelace === "string" ? BigInt(lovelace) : BigInt(lovelace);
-  const ada = Number(value) / 1_000_000;
-  return ada.toLocaleString("en-US", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 6,
-  });
+  try {
+    const value = typeof lovelace === "string" ? BigInt(lovelace || "0") : BigInt(lovelace || 0);
+    const ada = Number(value) / 1_000_000;
+    // Use fixed format to avoid locale issues
+    return ada.toFixed(6);
+  } catch (error) {
+    console.warn("Error converting lovelace to ADA:", error);
+    return "0.000000";
+  }
 };
 
 /**
@@ -106,7 +109,7 @@ export const adaToLovelace = (ada: string | number): string => {
  * Shorten address for display
  */
 export const shortenAddress = (address: string, chars: number = 8): string => {
-  if (!address) return "";
+  if (!address || typeof address !== "string") return "";
   if (address.length <= chars * 2 + 3) return address;
   return `${address.slice(0, chars)}...${address.slice(-chars)}`;
 };
@@ -115,7 +118,12 @@ export const shortenAddress = (address: string, chars: number = 8): string => {
  * Format timestamp to readable date
  */
 export const formatTimestamp = (timestamp: number): string => {
-  return new Date(timestamp * 1000).toLocaleString();
+  try {
+    if (!timestamp || typeof timestamp !== "number") return "";
+    return new Date(timestamp * 1000).toLocaleDateString();
+  } catch (error) {
+    return "";
+  }
 };
 
 /**
