@@ -2,10 +2,11 @@
 
 import * as React from "react";
 import { useWalletStore, useTelegram } from "@/hooks";
-import { BalanceCard, TransactionList } from "@/components/wallet";
+import { BalanceCard, TransactionList, NetworkSelector } from "@/components/wallet";
 import { WalletSelector } from "@/components/wallet/WalletSelector";
 import { Button } from "@/components/ui";
 import { debugLogObject, safeString } from "@/lib/utils/safeRender";
+import { type CardanoNetwork } from "@/lib/cardano";
 
 interface WalletDashboardProps {
   onSend?: () => void;
@@ -31,6 +32,7 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
     refreshBalance,
     refreshTransactions,
     lockWallet,
+    changeNetwork,
   } = useWalletStore();
 
   // Debug logging
@@ -60,6 +62,7 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
 
   const [isRefreshing, setIsRefreshing] = React.useState(false);
   const [showWalletSelector, setShowWalletSelector] = React.useState(false);
+  const [showNetworkSelector, setShowNetworkSelector] = React.useState(false);
 
   // Refresh data on mount
   React.useEffect(() => {
@@ -97,6 +100,20 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
     lockWallet();
   };
 
+  const handleNetworkChange = (newNetwork: CardanoNetwork) => {
+    if (isInTelegram) {
+      hapticFeedback.impactOccurred("medium");
+    }
+    changeNetwork(newNetwork);
+  };
+
+  // Network display info
+  const networkInfo: Record<CardanoNetwork, { label: string; color: string }> = {
+    mainnet: { label: "Mainnet", color: "bg-green-500" },
+    preprod: { label: "Preprod", color: "bg-blue-500" },
+    preview: { label: "Preview", color: "bg-purple-500" },
+  };
+
   return (
     <div className="min-h-screen bg-gray-100 dark:bg-gray-900">
       {/* Header */}
@@ -120,6 +137,16 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
             <ChevronDownIcon className="w-4 h-4 text-gray-400 ml-1" />
           </button>
           <div className="flex items-center gap-2">
+            {/* Network Selector Button */}
+            <button
+              onClick={() => setShowNetworkSelector(true)}
+              className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors"
+            >
+              <span className={`w-2 h-2 rounded-full ${networkInfo[network].color}`} />
+              <span className="text-gray-700 dark:text-gray-300">
+                {networkInfo[network].label}
+              </span>
+            </button>
             <button
               onClick={onSettings}
               className="p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
@@ -200,6 +227,14 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
           />
         </section>
       </main>
+
+      {/* Network Selector Modal */}
+      <NetworkSelector
+        isOpen={showNetworkSelector}
+        currentNetwork={network}
+        onNetworkChange={handleNetworkChange}
+        onClose={() => setShowNetworkSelector(false)}
+      />
 
       {/* Telegram Environment Badge */}
       {isInTelegram && (

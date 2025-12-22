@@ -4,34 +4,53 @@
 export type CardanoNetwork = "mainnet" | "preprod" | "preview";
 
 /**
- * Get current network from environment
+ * Get current network from storage or environment
  */
 export const getCurrentNetwork = (): CardanoNetwork => {
+  // First check localStorage for user preference
+  if (typeof window !== "undefined") {
+    const storedNetwork = localStorage.getItem("cardano_network");
+    if (storedNetwork === "mainnet" || storedNetwork === "preprod" || storedNetwork === "preview") {
+      return storedNetwork;
+    }
+  }
+  
+  // Fall back to environment variable
   const network = process.env.NEXT_PUBLIC_CARDANO_NETWORK;
   if (network === "mainnet" || network === "preprod" || network === "preview") {
     return network;
   }
-  return "preprod"; // Default to preprod for development
+  return "preview"; // Default to preview for development
 };
 
 /**
  * Get Blockfrost URL based on network
  */
-export const getBlockfrostUrl = (): string => {
-  const network = getCurrentNetwork();
+export const getBlockfrostUrl = (network?: CardanoNetwork): string => {
+  const currentNetwork = network || getCurrentNetwork();
   const baseUrls: Record<CardanoNetwork, string> = {
     mainnet: "https://cardano-mainnet.blockfrost.io/api/v0",
     preprod: "https://cardano-preprod.blockfrost.io/api/v0",
     preview: "https://cardano-preview.blockfrost.io/api/v0",
   };
-  return process.env.NEXT_PUBLIC_BLOCKFROST_URL || baseUrls[network];
+  return baseUrls[currentNetwork];
 };
 
 /**
- * Get Blockfrost API key
+ * Get Blockfrost API key for specific network
  */
-export const getBlockfrostApiKey = (): string => {
-  return process.env.NEXT_PUBLIC_BLOCKFROST_API_KEY || "";
+export const getBlockfrostApiKey = (network?: CardanoNetwork): string => {
+  const currentNetwork = network || getCurrentNetwork();
+  
+  // Check for network-specific keys first
+  const networkKeys: Record<CardanoNetwork, string | undefined> = {
+    mainnet: process.env.NEXT_PUBLIC_BLOCKFROST_KEY_MAINNET,
+    preprod: process.env.NEXT_PUBLIC_BLOCKFROST_KEY_PREPROD,
+    preview: process.env.NEXT_PUBLIC_BLOCKFROST_KEY_PREVIEW,
+  };
+  
+  // Return network-specific key or fall back to generic key
+  return networkKeys[currentNetwork] || process.env.NEXT_PUBLIC_BLOCKFROST_API_KEY || "";
 };
 
 /**

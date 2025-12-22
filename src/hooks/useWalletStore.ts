@@ -68,6 +68,7 @@ export interface WalletState {
   deleteWallet: (walletId?: string) => void;
   deleteAllWallets: () => void;
   renameWallet: (walletId: string, newName: string) => boolean;
+  changeNetwork: (network: CardanoNetwork) => void;
   refreshBalance: () => Promise<void>;
   refreshTransactions: () => Promise<void>;
   refreshWalletsList: () => void;
@@ -427,6 +428,25 @@ export const useWalletStore = create<WalletState>()(
           }
         }
         return success;
+      },
+
+      /**
+       * Change network (locks wallet and updates network)
+       */
+      changeNetwork: (network: CardanoNetwork) => {
+        // Lock wallet first
+        set({
+          isLoggedIn: false,
+          balance: null,
+          transactions: [],
+          _walletInstance: null,
+          network,
+        });
+
+        // Store network preference in localStorage
+        if (typeof window !== "undefined") {
+          localStorage.setItem("cardano_network", network);
+        }
       },
 
       /**

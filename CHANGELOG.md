@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.3.3] - 2024-12-22 - Network Selection 🌐
+
+### Added
+- **Network Selector**: Switch between Cardano networks
+  - **Preview** - Cutting-edge features testing network
+  - **Pre-Production (Preprod)** - Testing network that mirrors mainnet
+  - **Mainnet** - Production network with real ADA
+  - Network indicator badge in dashboard header
+  - Confirmation dialog before switching networks
+  - Warning for mainnet (real ADA) usage
+  - Network preference persisted in localStorage
+
+### Changed
+- `getCurrentNetwork()` now checks localStorage first for user preference
+- `getBlockfrostUrl()` dynamically returns URL based on selected network
+- `getBlockfrostApiKey()` supports per-network API keys
+- Dashboard header now shows current network with colored indicator
+- Switching network will lock wallet (requires PIN re-entry)
+
+### Configuration
+- `.env.local` now supports separate API keys per network:
+  - `NEXT_PUBLIC_BLOCKFROST_KEY_PREVIEW`
+  - `NEXT_PUBLIC_BLOCKFROST_KEY_PREPROD`
+  - `NEXT_PUBLIC_BLOCKFROST_KEY_MAINNET`
+
+---
+
 ## [0.3.2] - 2024-12-22 - QR Code Scanner 📷
 
 ### Added

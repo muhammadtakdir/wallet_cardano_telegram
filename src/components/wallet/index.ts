@@ -28,3 +28,6 @@ export type { AssetDetailProps } from "./AssetDetail";
 
 export { QRScanner } from "./QRScanner";
 export type { QRScannerProps } from "./QRScanner";
+
+export { NetworkSelector } from "./NetworkSelector";
+export type { NetworkSelectorProps } from "./NetworkSelector";
