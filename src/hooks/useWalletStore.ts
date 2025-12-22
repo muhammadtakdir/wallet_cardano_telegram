@@ -132,8 +132,19 @@ export const useWalletStore = create<WalletState>()(
             throw new Error("Failed to save wallet securely");
           }
 
-          // Get initial balance
-          const balance = await getWalletBalance(wallet);
+          // Default balance for new wallets
+          let balance: WalletBalance = {
+            lovelace: "0",
+            ada: "0.000000",
+            assets: [],
+          };
+
+          // Try to get initial balance (non-blocking)
+          try {
+            balance = await getWalletBalance(wallet);
+          } catch (balanceError) {
+            console.warn("Failed to fetch initial balance:", balanceError);
+          }
 
           // Refresh wallets list
           const wallets = getWalletsList();
@@ -154,7 +165,7 @@ export const useWalletStore = create<WalletState>()(
           // IMPORTANT: This is the ONLY time the mnemonic is returned in plain text
           return mnemonic;
         } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : "Failed to create wallet";
+          const errorMessage = error instanceof Error ? error.message : String(error);
           set({ isLoading: false, error: errorMessage });
           throw error;
         }
@@ -192,11 +203,27 @@ export const useWalletStore = create<WalletState>()(
             throw new Error("Failed to save wallet securely");
           }
 
-          // Get initial balance
-          const balance = await getWalletBalance(wallet);
+          // Default balance and transactions
+          let balance: WalletBalance = {
+            lovelace: "0",
+            ada: "0.000000",
+            assets: [],
+          };
+          let transactions: TransactionInfo[] = [];
 
-          // Get transaction history
-          const transactions = await getTransactionHistory(address);
+          // Try to get initial balance (non-blocking)
+          try {
+            balance = await getWalletBalance(wallet);
+          } catch (balanceError) {
+            console.warn("Failed to fetch initial balance:", balanceError);
+          }
+
+          // Try to get transaction history (non-blocking)
+          try {
+            transactions = await getTransactionHistory(address);
+          } catch (txError) {
+            console.warn("Failed to fetch transactions:", txError);
+          }
 
           // Refresh wallets list
           const wallets = getWalletsList();
@@ -216,7 +243,7 @@ export const useWalletStore = create<WalletState>()(
 
           return true;
         } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : "Failed to import wallet";
+          const errorMessage = error instanceof Error ? error.message : String(error);
           set({ isLoading: false, error: errorMessage });
           return false;
         }
@@ -261,14 +288,32 @@ export const useWalletStore = create<WalletState>()(
           // Get wallet info
           const walletInfo = getWalletInfo(id);
 
-          // Get balance
-          const balance = await getWalletBalance(wallet);
-
-          // Get transaction history
-          const transactions = await getTransactionHistory(address);
-
           // Refresh wallets list
           const wallets = getWalletsList();
+
+          // Default balance for new wallets
+          let balance: WalletBalance = {
+            lovelace: "0",
+            ada: "0.000000",
+            assets: [],
+          };
+
+          // Default empty transactions
+          let transactions: TransactionInfo[] = [];
+
+          // Try to get balance (non-blocking - wallet still unlocks if this fails)
+          try {
+            balance = await getWalletBalance(wallet);
+          } catch (balanceError) {
+            console.warn("Failed to fetch balance (new wallet or network issue):", balanceError);
+          }
+
+          // Try to get transaction history (non-blocking)
+          try {
+            transactions = await getTransactionHistory(address);
+          } catch (txError) {
+            console.warn("Failed to fetch transactions (new wallet or network issue):", txError);
+          }
 
           set({
             isLoggedIn: true,
@@ -285,7 +330,7 @@ export const useWalletStore = create<WalletState>()(
 
           return true;
         } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : "Failed to unlock wallet";
+          const errorMessage = error instanceof Error ? error.message : String(error);
           set({ isLoading: false, error: errorMessage });
           return false;
         }
