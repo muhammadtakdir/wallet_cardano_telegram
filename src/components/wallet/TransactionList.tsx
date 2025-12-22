@@ -17,6 +17,21 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   isLoading = false,
   onTransactionClick,
 }) => {
+  // Debug logging
+  React.useEffect(() => {
+    console.log("=== TransactionList Debug ===");
+    console.log("transactions:", transactions);
+    console.log("transactions length:", transactions?.length);
+    if (transactions && transactions.length > 0) {
+      console.log("First transaction:", transactions[0]);
+      console.log("First tx hash:", transactions[0]?.hash, typeof transactions[0]?.hash);
+      console.log("First tx amount:", transactions[0]?.amount, typeof transactions[0]?.amount);
+      console.log("First tx blockTime:", transactions[0]?.blockTime, typeof transactions[0]?.blockTime);
+    }
+    console.log("walletAddress:", walletAddress, typeof walletAddress);
+    console.log("=== End TransactionList Debug ===");
+  }, [transactions, walletAddress]);
+
   if (isLoading) {
     return (
       <Card padding="md">
