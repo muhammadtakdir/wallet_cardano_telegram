@@ -58,10 +58,42 @@ export const createWalletFromMnemonic = async (
     });
 
     // Get the first address (these methods return promises in newer MeshJS versions)
-    const addresses = await wallet.getUsedAddresses();
-    const unusedAddresses = await wallet.getUnusedAddresses();
-    const changeAddress = await wallet.getChangeAddress();
-    const address = addresses[0] || unusedAddresses[0] || changeAddress;
+    let address: string = "";
+    
+    try {
+      const addresses = await wallet.getUsedAddresses();
+      if (addresses && addresses.length > 0) {
+        address = String(addresses[0]);
+      }
+    } catch (e) {
+      console.warn("Could not get used addresses:", e);
+    }
+    
+    if (!address) {
+      try {
+        const unusedAddresses = await wallet.getUnusedAddresses();
+        if (unusedAddresses && unusedAddresses.length > 0) {
+          address = String(unusedAddresses[0]);
+        }
+      } catch (e) {
+        console.warn("Could not get unused addresses:", e);
+      }
+    }
+    
+    if (!address) {
+      try {
+        const changeAddress = await wallet.getChangeAddress();
+        if (changeAddress) {
+          address = String(changeAddress);
+        }
+      } catch (e) {
+        console.warn("Could not get change address:", e);
+      }
+    }
+
+    if (!address) {
+      throw new Error("Could not derive wallet address");
+    }
 
     return {
       wallet,
@@ -70,7 +102,8 @@ export const createWalletFromMnemonic = async (
     };
   } catch (error) {
     console.error("Error creating wallet from mnemonic:", error);
-    throw new Error("Failed to create wallet. Please check your mnemonic.");
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(message || "Failed to create wallet. Please check your mnemonic.");
   }
 };
 
