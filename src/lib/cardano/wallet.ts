@@ -152,7 +152,7 @@ export const getWalletBalance = async (
 };
 
 /**
- * Get wallet transaction history
+ * Get wallet transaction history with direction and amount
  * 
  * @param address - Wallet address
  * @returns Array of transaction info
@@ -193,13 +193,101 @@ export const getTransactionHistory = async (
 
     const transactions = await response.json();
 
-    // Map to our transaction format
-    return transactions.map((tx: { tx_hash: string; block_height: number; block_time: number; tx_index: number }) => ({
-      hash: tx.tx_hash,
-      blockHeight: tx.block_height,
-      blockTime: tx.block_time,
-      index: tx.tx_index,
-    }));
+    // Fetch UTxO details for each transaction to determine direction and amount
+    const transactionsWithDetails = await Promise.all(
+      transactions.slice(0, 20).map(async (tx: { tx_hash: string; block_height: number; block_time: number; tx_index: number }) => {
+        try {
+          // Get transaction UTxOs
+          const utxoResponse = await fetch(`${baseUrl}/txs/${tx.tx_hash}/utxos`, {
+            headers: { project_id: apiKey },
+          });
+          
+          if (!utxoResponse.ok) {
+            return {
+              hash: tx.tx_hash,
+              blockHeight: tx.block_height,
+              blockTime: tx.block_time,
+              index: tx.tx_index,
+            };
+          }
+
+          const utxoData = await utxoResponse.json();
+          
+          // Calculate amounts for this address
+          let inputAmount = BigInt(0);
+          let outputAmount = BigInt(0);
+          
+          // Check inputs (what this address sent)
+          for (const input of utxoData.inputs || []) {
+            if (input.address === address) {
+              for (const amount of input.amount || []) {
+                if (amount.unit === "lovelace") {
+                  inputAmount += BigInt(amount.quantity);
+                }
+              }
+            }
+          }
+          
+          // Check outputs (what this address received)
+          for (const output of utxoData.outputs || []) {
+            if (output.address === address) {
+              for (const amount of output.amount || []) {
+                if (amount.unit === "lovelace") {
+                  outputAmount += BigInt(amount.quantity);
+                }
+              }
+            }
+          }
+          
+          // Determine direction and net amount
+          let direction: "incoming" | "outgoing" | "self" = "self";
+          let netAmount = BigInt(0);
+          
+          if (inputAmount > BigInt(0) && outputAmount > BigInt(0)) {
+            // Both input and output - could be self-send or change
+            netAmount = outputAmount - inputAmount;
+            if (netAmount > BigInt(0)) {
+              direction = "incoming";
+            } else if (netAmount < BigInt(0)) {
+              direction = "outgoing";
+              netAmount = -netAmount; // Make positive
+            } else {
+              direction = "self";
+            }
+          } else if (outputAmount > BigInt(0)) {
+            // Only output - incoming
+            direction = "incoming";
+            netAmount = outputAmount;
+          } else if (inputAmount > BigInt(0)) {
+            // Only input - outgoing
+            direction = "outgoing";
+            netAmount = inputAmount;
+          }
+          
+          // Convert to ADA (6 decimal places)
+          const amountAda = (Number(netAmount) / 1_000_000).toFixed(2);
+          
+          return {
+            hash: tx.tx_hash,
+            blockHeight: tx.block_height,
+            blockTime: tx.block_time,
+            index: tx.tx_index,
+            direction,
+            amount: amountAda,
+          };
+        } catch (err) {
+          console.error(`Error fetching UTxOs for tx ${tx.tx_hash}:`, err);
+          return {
+            hash: tx.tx_hash,
+            blockHeight: tx.block_height,
+            blockTime: tx.block_time,
+            index: tx.tx_index,
+          };
+        }
+      })
+    );
+
+    return transactionsWithDetails;
   } catch (error) {
     console.error("Error fetching transaction history:", error);
     return [];

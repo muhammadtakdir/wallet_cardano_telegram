@@ -138,19 +138,21 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
             </span>
           )}
         </div>
-        <div className="flex items-center gap-2 mt-0.5">
-          {amount && (
+        {amount && parseFloat(String(amount)) > 0 && (
+          <div className="flex items-center gap-2 mt-0.5">
             <span
               className={`text-sm font-semibold ${
                 isIncoming
                   ? "text-green-600 dark:text-green-400"
-                  : "text-red-600 dark:text-red-400"
+                  : isOutgoing
+                  ? "text-red-600 dark:text-red-400"
+                  : "text-gray-600 dark:text-gray-400"
               }`}
             >
-              {isIncoming ? "+" : "-"}{String(amount)} ADA
+              {isIncoming ? "+" : isOutgoing ? "-" : ""}{String(amount)} ADA
             </span>
-          )}
-        </div>
+          </div>
+        )}
         <div className="flex items-center gap-2 mt-0.5">
           <span className="text-xs text-gray-500 dark:text-gray-400 font-mono">
             {shortenAddress(hash, 8)}

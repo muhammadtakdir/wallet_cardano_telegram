@@ -17,6 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Support for dark mode styling
 
 ### Improved
+- **Transaction Amount Display**: Now shows actual ADA amounts
+  - Calculates net amount from UTxO inputs/outputs
+  - Green +amount for incoming transactions
+  - Red -amount for outgoing transactions
+  - Displays "Received" or "Sent" based on direction
+
 - **Native Assets Display in Balance Card**:
   - Asset names now decoded from hex to readable text
   - Shows human-readable names instead of raw hex strings
@@ -24,7 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Fallback to truncated hex if not decodable
 
 ### Changed
-- `TransactionList.tsx` - Added IN/OUT badges, moved amount to separate line
+- `wallet.ts` - `getTransactionHistory()` now fetches UTxO details to calculate direction and amount
+- `TransactionList.tsx` - Added IN/OUT badges, displays amount with +/- prefix
 - `BalanceCard.tsx` - Added `decodeAssetName()` function for asset name display
 
 ---
