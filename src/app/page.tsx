@@ -68,12 +68,12 @@ export default function WalletPage() {
     return () => clearTimeout(timer);
   }, [isLoggedIn]);
 
-  // Update view when login status changes
+  // Update view when login status changes (only for initial login)
   React.useEffect(() => {
-    if (isLoggedIn) {
+    if (isLoggedIn && (view === "loading" || view === "unlock")) {
       setView("dashboard");
     }
-  }, [isLoggedIn]);
+  }, [isLoggedIn, view]);
 
   // Clear errors when changing views
   React.useEffect(() => {
@@ -524,8 +524,14 @@ export default function WalletPage() {
     return (
       <WalletDashboard
         onAddWallet={handleAddWallet}
-        onSend={() => setView("send")}
-        onReceive={() => setView("receive")}
+        onSend={() => {
+          console.log("page.tsx: onSend called, setting view to send");
+          setView("send");
+        }}
+        onReceive={() => {
+          console.log("page.tsx: onReceive called, setting view to receive");
+          setView("receive");
+        }}
       />
     );
   }

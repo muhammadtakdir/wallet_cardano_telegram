@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.3.2] - 2024-12-22 - QR Code Scanner 📷
+
+### Added
+- **QR Code Scanner for Send**: Scan recipient wallet address via camera
+  - Uses `html5-qrcode` library for camera access
+  - Auto-detects back camera for mobile devices
+  - Validates scanned address (Cardano format check)
+  - Supports both direct addresses and `web+cardano://` payment URIs
+  - Visual scanning overlay with corner markers
+  - Error handling for camera permissions and invalid QR codes
+
+### Changed
+- SendScreen recipient input now has "Scan QR" button
+- QRScanner component added to wallet components
+
+---
+
+## [0.3.1] - 2024-12-22 - Security & Bug Fixes 🔒
+
+### Fixed
+- **Transaction API**: Fixed `wallet.createTx is not a function` error
+  - Changed from non-existent `wallet.createTx()` to proper `MeshTxBuilder` API
+  - Now correctly uses `MeshTxBuilder` with proper UTxO selection
+  - Transactions properly build with change address handling
+
+### Added
+- **PIN Verification for Send**: Added PIN verification step before sending transactions
+  - Users must enter their 6-digit PIN to authorize transactions
+  - Prevents unauthorized transactions if device is compromised
+  - Shows transaction summary (amount + recipient) during PIN entry
+  - Invalid PIN error handling with retry
+  - Uses existing PIN hash verification system
+
+### Changed
+- SendScreen now has additional "pin" step between confirm and sending
+- Transaction flow: Input → Confirm → PIN → Sending → Success/Error
+
+---
+
 ## [0.3.0] - 2024-12-22 - Phase 2: Send/Receive & Native Assets 🚧
 
 ### Added

@@ -1,19 +1,21 @@
 "use client";
 
 import * as React from "react";
-import { Card, Button, Input } from "@/components/ui";
+import { Card, Button, Input, PinInput } from "@/components/ui";
 import { useWalletStore } from "@/hooks";
 import { shortenAddress, lovelaceToAda, adaToLovelace } from "@/lib/cardano";
+import { verifyPin, getStoredWalletForVerification } from "@/lib/storage/encryption";
+import { QRScanner } from "./QRScanner";
 
 export interface SendScreenProps {
   onBack: () => void;
   onSuccess?: (txHash: string) => void;
 }
 
-type SendStep = "input" | "confirm" | "sending" | "success" | "error";
+type SendStep = "input" | "confirm" | "pin" | "sending" | "success" | "error";
 
 export const SendScreen: React.FC<SendScreenProps> = ({ onBack, onSuccess }) => {
-  const { walletAddress, balance, network } = useWalletStore();
+  const { walletAddress, balance, network, activeWalletId } = useWalletStore();
   const [step, setStep] = React.useState<SendStep>("input");
   const [recipient, setRecipient] = React.useState("");
   const [amount, setAmount] = React.useState("");
@@ -21,6 +23,9 @@ export const SendScreen: React.FC<SendScreenProps> = ({ onBack, onSuccess }) => 
   const [txHash, setTxHash] = React.useState<string | null>(null);
   const [isLoading, setIsLoading] = React.useState(false);
   const [estimatedFee, setEstimatedFee] = React.useState<string>("~0.17");
+  const [pin, setPin] = React.useState("");
+  const [pinError, setPinError] = React.useState<string | null>(null);
+  const [showQRScanner, setShowQRScanner] = React.useState(false);
 
   const availableAda = React.useMemo(() => {
     if (!balance?.ada) return 0;
@@ -49,6 +54,12 @@ export const SendScreen: React.FC<SendScreenProps> = ({ onBack, onSuccess }) => 
     setAmount(maxAmount.toFixed(6));
   };
 
+  // Handle QR scan result
+  const handleQRScan = (scannedAddress: string) => {
+    setRecipient(scannedAddress);
+    setShowQRScanner(false);
+  };
+
   const handleContinue = () => {
     setError(null);
     if (!canProceed) {
@@ -62,6 +73,44 @@ export const SendScreen: React.FC<SendScreenProps> = ({ onBack, onSuccess }) => 
       return;
     }
     setStep("confirm");
+  };
+
+  // Handle confirm -> go to PIN verification
+  const handleConfirm = () => {
+    setPin("");
+    setPinError(null);
+    setStep("pin");
+  };
+
+  // Handle PIN verification
+  const handlePinComplete = async (enteredPin: string) => {
+    setPinError(null);
+    
+    try {
+      // Get stored wallet to verify PIN
+      const storedWallet = getStoredWalletForVerification(activeWalletId || undefined);
+      
+      if (!storedWallet || !storedWallet.pinHash) {
+        setPinError("Wallet configuration error");
+        return;
+      }
+
+      // Verify PIN
+      const isValid = verifyPin(enteredPin, storedWallet.pinHash);
+      
+      if (!isValid) {
+        setPinError("Invalid PIN. Please try again.");
+        setPin("");
+        return;
+      }
+
+      // PIN verified, proceed to send
+      await handleSend();
+    } catch (err) {
+      console.error("PIN verification error:", err);
+      setPinError("Verification failed. Please try again.");
+      setPin("");
+    }
   };
 
   const handleSend = async () => {
@@ -119,9 +168,18 @@ export const SendScreen: React.FC<SendScreenProps> = ({ onBack, onSuccess }) => 
         <Card padding="lg" className="space-y-6">
           {/* Recipient Address */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Recipient Address
-            </label>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Recipient Address
+              </label>
+              <button
+                onClick={() => setShowQRScanner(true)}
+                className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 font-medium"
+              >
+                <QRCodeIcon className="w-4 h-4" />
+                Scan QR
+              </button>
+            </div>
             <textarea
               value={recipient}
               onChange={(e) => setRecipient(e.target.value.trim())}
@@ -207,6 +265,13 @@ export const SendScreen: React.FC<SendScreenProps> = ({ onBack, onSuccess }) => 
             Continue
           </Button>
         </Card>
+
+        {/* QR Scanner Modal */}
+        <QRScanner
+          isOpen={showQRScanner}
+          onScan={handleQRScan}
+          onClose={() => setShowQRScanner(false)}
+        />
       </div>
     );
   }
@@ -291,11 +356,83 @@ export const SendScreen: React.FC<SendScreenProps> = ({ onBack, onSuccess }) => 
             <Button
               variant="primary"
               fullWidth
-              onClick={handleSend}
+              onClick={handleConfirm}
             >
               Confirm & Send
             </Button>
           </div>
+        </Card>
+      </div>
+    );
+  }
+
+  // PIN Verification Step
+  if (step === "pin") {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-4">
+        <header className="flex items-center gap-3 mb-6">
+          <button
+            onClick={() => {
+              setPin("");
+              setPinError(null);
+              setStep("confirm");
+            }}
+            className="p-2 hover:bg-gray-200 dark:hover:bg-gray-800 rounded-lg"
+          >
+            <BackIcon className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+          </button>
+          <h1 className="text-xl font-bold text-gray-900 dark:text-white">
+            Enter PIN
+          </h1>
+        </header>
+
+        <Card padding="lg" className="space-y-6">
+          <div className="text-center">
+            <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+              <LockIcon className="w-8 h-8 text-blue-600" />
+            </div>
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+              Verify Your Identity
+            </h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Enter your 6-digit PIN to authorize this transaction
+            </p>
+          </div>
+
+          <div className="bg-gray-50 dark:bg-gray-900 rounded-xl p-4 space-y-2">
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-500">Sending</span>
+              <span className="text-gray-900 dark:text-white font-medium">{amountNum.toFixed(6)} ADA</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-500">To</span>
+              <span className="text-gray-900 dark:text-white font-mono text-xs">
+                {shortenAddress(recipient, 8)}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex justify-center">
+            <PinInput
+              length={6}
+              value={pin}
+              onChange={setPin}
+              onComplete={handlePinComplete}
+              error={pinError || undefined}
+              autoFocus
+              mask
+            />
+          </div>
+
+          {pinError && (
+            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-3">
+              <p className="text-sm text-red-600 dark:text-red-400 text-center">{pinError}</p>
+            </div>
+          )}
+
+          <p className="text-xs text-gray-400 text-center">
+            Your PIN protects your wallet from unauthorized transactions
+          </p>
         </Card>
       </div>
     );
@@ -409,6 +546,18 @@ const WarningIcon: React.FC<{ className?: string }> = ({ className }) => (
 const XIcon: React.FC<{ className?: string }> = ({ className }) => (
   <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+  </svg>
+);
+
+const LockIcon: React.FC<{ className?: string }> = ({ className }) => (
+  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+  </svg>
+);
+
+const QRCodeIcon: React.FC<{ className?: string }> = ({ className }) => (
+  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
   </svg>
 );
 

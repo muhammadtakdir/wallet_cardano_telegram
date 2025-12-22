@@ -164,7 +164,10 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
             variant="primary"
             size="lg"
             fullWidth
-            onClick={onSend}
+            onClick={() => {
+              console.log("Send button clicked");
+              onSend?.();
+            }}
             className="flex items-center justify-center gap-2"
           >
             <SendIcon className="w-5 h-5" />
@@ -174,7 +177,10 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
             variant="outline"
             size="lg"
             fullWidth
-            onClick={onReceive}
+            onClick={() => {
+              console.log("Receive button clicked");
+              onReceive?.();
+            }}
             className="flex items-center justify-center gap-2"
           >
             <ReceiveIcon className="w-5 h-5" />

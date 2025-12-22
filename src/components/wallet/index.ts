@@ -25,3 +25,6 @@ export type { AssetListProps } from "./AssetList";
 
 export { AssetDetail } from "./AssetDetail";
 export type { AssetDetailProps } from "./AssetDetail";
+
+export { QRScanner } from "./QRScanner";
+export type { QRScannerProps } from "./QRScanner";

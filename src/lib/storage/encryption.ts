@@ -473,6 +473,29 @@ export const hasPinSet = (walletId?: string): boolean => {
 };
 
 /**
+ * Get encrypted wallet data for verification purposes (no decryption)
+ * 
+ * @param walletId - The wallet ID (uses active wallet if not provided)
+ * @returns Object containing pinHash for verification, or null if not found
+ */
+export const getStoredWalletForVerification = (walletId?: string): { pinHash: string } | null => {
+  const id = walletId || getActiveWalletId();
+  if (!id) return null;
+
+  const storageKey = getWalletStorageKey(id);
+  const storedData = getStorageItem(storageKey);
+  if (!storedData) return null;
+
+  try {
+    const encryptedData: EncryptedWalletData = JSON.parse(storedData);
+    if (!encryptedData.pinHash) return null;
+    return { pinHash: encryptedData.pinHash };
+  } catch {
+    return null;
+  }
+};
+
+/**
  * Rename wallet
  * 
  * @param walletId - The wallet ID

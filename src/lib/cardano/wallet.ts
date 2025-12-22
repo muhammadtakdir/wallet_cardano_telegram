@@ -1,6 +1,6 @@
 "use client";
 
-import { BlockfrostProvider, MeshWallet } from "@meshsdk/core";
+import { BlockfrostProvider, MeshWallet, MeshTxBuilder } from "@meshsdk/core";
 import {
   getBlockfrostApiKey,
   getBlockfrostUrl,
@@ -327,13 +327,32 @@ export const sendTransaction = async (
       return { success: false, error: "Minimum send amount is 1 ADA" };
     }
 
-    // Build the transaction
-    const tx = await wallet.createTx()
+    // Create provider for transaction builder
+    const provider = createBlockfrostProvider();
+
+    // Get UTxOs and change address from wallet
+    const utxos = await wallet.getUtxos();
+    const changeAddress = await wallet.getChangeAddress();
+
+    if (!utxos || utxos.length === 0) {
+      return { success: false, error: "No UTxOs available in wallet" };
+    }
+
+    // Build the transaction using MeshTxBuilder
+    const txBuilder = new MeshTxBuilder({
+      fetcher: provider,
+      submitter: provider,
+      verbose: false,
+    });
+
+    const unsignedTx = await txBuilder
       .txOut(recipientAddress, [{ unit: "lovelace", quantity: lovelaceAmount }])
+      .changeAddress(changeAddress)
+      .selectUtxosFrom(utxos)
       .complete();
 
     // Sign the transaction
-    const signedTx = await wallet.signTx(tx);
+    const signedTx = await wallet.signTx(unsignedTx);
 
     // Submit the transaction
     const txHash = await wallet.submitTx(signedTx);
@@ -374,17 +393,37 @@ export const sendAssetTransaction = async (
   quantity: string
 ): Promise<SendTransactionResult> => {
   try {
+    // Create provider for transaction builder
+    const provider = createBlockfrostProvider();
+
+    // Get UTxOs and change address from wallet
+    const utxos = await wallet.getUtxos();
+    const changeAddress = await wallet.getChangeAddress();
+
+    if (!utxos || utxos.length === 0) {
+      return { success: false, error: "No UTxOs available in wallet" };
+    }
+
+    // Build the transaction using MeshTxBuilder
+    const txBuilder = new MeshTxBuilder({
+      fetcher: provider,
+      submitter: provider,
+      verbose: false,
+    });
+
     // Build the transaction with native asset
     // Native assets must be sent with minimum ADA (for UTxO)
-    const tx = await wallet.createTx()
+    const unsignedTx = await txBuilder
       .txOut(recipientAddress, [
         { unit: assetUnit, quantity },
         { unit: "lovelace", quantity: "1500000" }, // ~1.5 ADA for UTxO
       ])
+      .changeAddress(changeAddress)
+      .selectUtxosFrom(utxos)
       .complete();
 
     // Sign the transaction
-    const signedTx = await wallet.signTx(tx);
+    const signedTx = await wallet.signTx(unsignedTx);
 
     // Submit the transaction
     const txHash = await wallet.submitTx(signedTx);
@@ -415,13 +454,30 @@ export const estimateTransactionFee = async (
   lovelaceAmount: string
 ): Promise<string> => {
   try {
-    // Build a transaction to estimate fee
-    const tx = await wallet.createTx()
+    // Create provider for transaction builder
+    const provider = createBlockfrostProvider();
+
+    // Get UTxOs and change address from wallet
+    const utxos = await wallet.getUtxos();
+    const changeAddress = await wallet.getChangeAddress();
+
+    if (!utxos || utxos.length === 0) {
+      return "200000"; // ~0.2 ADA default estimate
+    }
+
+    // Build the transaction using MeshTxBuilder (but don't sign/submit)
+    const txBuilder = new MeshTxBuilder({
+      fetcher: provider,
+      verbose: false,
+    });
+
+    await txBuilder
       .txOut(recipientAddress, [{ unit: "lovelace", quantity: lovelaceAmount }])
+      .changeAddress(changeAddress)
+      .selectUtxosFrom(utxos)
       .complete();
 
-    // The transaction includes the fee calculation
-    // For now, return a reasonable estimate
+    // Return typical fee estimate
     return "170000"; // ~0.17 ADA typical fee
   } catch {
     return "200000"; // ~0.2 ADA default estimate
