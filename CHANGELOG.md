@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.3.7] - 2024-12-22 - Transaction Labels & Asset Name Display 🏷️
+
+### Added
+- **Transaction IN/OUT Labels**: Clear visual indicators for transaction direction
+  - Green "IN" badge for incoming transactions
+  - Red "OUT" badge for outgoing transactions
+  - Badges displayed next to transaction type text
+  - Support for dark mode styling
+
+### Improved
+- **Native Assets Display in Balance Card**:
+  - Asset names now decoded from hex to readable text
+  - Shows human-readable names instead of raw hex strings
+  - Uses metadata name if available
+  - Fallback to truncated hex if not decodable
+
+### Changed
+- `TransactionList.tsx` - Added IN/OUT badges, moved amount to separate line
+- `BalanceCard.tsx` - Added `decodeAssetName()` function for asset name display
+
+---
+
 ## [0.3.6] - 2024-12-22 - Improved Asset Display & Copy Functions 📋
 
 ### Fixed

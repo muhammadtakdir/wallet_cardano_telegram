@@ -125,9 +125,23 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
           <span className="font-medium text-gray-900 dark:text-white">
             {isIncoming ? "Received" : isOutgoing ? "Sent" : "Transaction"}
           </span>
+          {/* IN/OUT Badge */}
+          {(isIncoming || isOutgoing) && (
+            <span
+              className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                isIncoming
+                  ? "bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300"
+                  : "bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300"
+              }`}
+            >
+              {isIncoming ? "IN" : "OUT"}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2 mt-0.5">
           {amount && (
             <span
-              className={`text-sm font-medium ${
+              className={`text-sm font-semibold ${
                 isIncoming
                   ? "text-green-600 dark:text-green-400"
                   : "text-red-600 dark:text-red-400"

@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { Card } from "@/components/ui";
-import { WalletBalance, shortenAddress, CardanoNetwork } from "@/lib/cardano";
+import { WalletBalance, shortenAddress, CardanoNetwork, WalletAsset } from "@/lib/cardano";
 import {
   type FiatCurrency,
   getCurrencyInfo,
@@ -14,6 +14,49 @@ import {
   formatFiatValue,
 } from "@/lib/currency";
 import { CurrencySelector } from "./CurrencySelector";
+
+// Decode hex asset name to readable string
+function decodeAssetName(asset: WalletAsset): string {
+  // If metadata has name, use it
+  if (asset.metadata?.name) {
+    return asset.metadata.name;
+  }
+  
+  // Try to decode assetName from hex
+  if (asset.assetName) {
+    try {
+      if (/^[0-9a-fA-F]+$/.test(asset.assetName)) {
+        const decoded = Buffer.from(asset.assetName, "hex").toString("utf8");
+        // Check if result is printable ASCII
+        if (/^[\x20-\x7E]+$/.test(decoded)) {
+          return decoded;
+        }
+      }
+    } catch {
+      // Ignore decode errors
+    }
+    // Return truncated assetName if not decodable
+    return asset.assetName.length > 16 ? asset.assetName.slice(0, 16) + "..." : asset.assetName;
+  }
+  
+  // Fallback: extract assetName from unit (unit = policyId + assetName)
+  if (asset.unit && asset.unit.length > 56) {
+    const assetNameHex = asset.unit.slice(56);
+    try {
+      if (/^[0-9a-fA-F]+$/.test(assetNameHex)) {
+        const decoded = Buffer.from(assetNameHex, "hex").toString("utf8");
+        if (/^[\x20-\x7E]+$/.test(decoded)) {
+          return decoded;
+        }
+      }
+    } catch {
+      // Ignore decode errors
+    }
+    return assetNameHex.length > 16 ? assetNameHex.slice(0, 16) + "..." : assetNameHex;
+  }
+  
+  return "Unknown Asset";
+}
 
 export interface BalanceCardProps {
   balance: WalletBalance | null;
@@ -272,7 +315,7 @@ export const BalanceCard: React.FC<BalanceCardProps> = ({
                   className="flex items-center justify-between text-sm"
                 >
                   <span className="text-gray-600 dark:text-gray-400 truncate max-w-[60%]">
-                    {String(asset.unit || "").slice(0, 20)}...
+                    {decodeAssetName(asset)}
                   </span>
                   <span className="font-medium text-gray-900 dark:text-white">
                     {isBalanceHidden ? "••••" : String(asset.quantity || "0")}
