@@ -7,6 +7,74 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.4.0] - 2024-12-22 - Staking Feature ⚡
+
+### Added
+- **Staking Screen**: Full staking functionality for Cardano
+  - View current staking status (active/inactive)
+  - See delegated pool info (ticker, name, pool ID)
+  - Display total staked amount and available rewards
+  - Current epoch indicator
+
+- **Reward History Chart**: Visual representation of staking rewards
+  - Simple bar chart showing last 5 epochs
+  - Reward amounts per epoch
+  - Easy-to-read visual comparison
+
+- **Stake Pool Search**: Find pools by ticker or name
+  - Search functionality with real-time results
+  - Pool details: saturation, margin, fixed cost, pledge
+  - Live stake, delegator count, blocks minted
+
+- **Default Pool**: Cardanesia [ADI]
+  - One-click delegation to recommended pool
+  - Automatic pool suggestion for new stakers
+
+- **Delegation & Withdrawal**:
+  - Delegate to any stake pool
+  - First delegation handles stake key registration (~2 ADA deposit)
+  - Change delegation between pools
+  - Withdraw accumulated rewards to spendable balance
+
+- **Pool Detail View**: Comprehensive pool information
+  - Pool ID, ticker, name, description
+  - Saturation percentage
+  - Margin and fixed cost
+  - Pledge amount
+  - Live stake and delegator count
+  - Blocks this epoch and total blocks
+  - Link to pool website
+
+### Changed
+- `WalletDashboard.tsx` - Added "Stake" button (3-column layout)
+- `page.tsx` - Added staking view routing
+
+### New Files
+- `StakingScreen.tsx` - Main staking component with:
+  - Overview step (status, rewards chart)
+  - Search step (find pools)
+  - Pool detail step (view pool info)
+  - Confirm/PIN/Processing/Success/Error flows
+
+### New Functions (wallet.ts)
+- `getCurrentEpoch()` - Get current epoch info
+- `getStakeAddressFromAddress()` - Extract stake address
+- `getStakingInfo()` - Get account staking status
+- `getPoolInfo()` - Get stake pool details
+- `searchPools()` - Search pools by ticker/name
+- `getDefaultPool()` - Get Cardanesia [ADI] pool info
+- `getRewardHistory()` - Get last N epochs rewards
+- `delegateToPool()` - Create delegation transaction
+- `withdrawRewards()` - Create withdrawal transaction
+
+### Technical
+- Blockfrost API integration for staking queries
+- MeshTxBuilder for delegation certificates
+- Stake key registration on first delegation
+- Reward withdrawal to change address
+
+---
+
 ## [0.3.9] - 2024-12-22 - Multi-Asset Sending 📦
 
 ### Added

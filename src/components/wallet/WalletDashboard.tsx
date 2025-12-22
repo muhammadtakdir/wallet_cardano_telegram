@@ -13,6 +13,7 @@ interface WalletDashboardProps {
   onReceive?: () => void;
   onSettings?: () => void;
   onAddWallet?: () => void;
+  onStaking?: () => void;
   onAssetClick?: (asset: WalletAsset) => void;
 }
 
@@ -21,6 +22,7 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
   onReceive,
   onSettings,
   onAddWallet,
+  onStaking,
   onAssetClick,
 }) => {
   const {
@@ -189,7 +191,7 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
         />
 
         {/* Action Buttons */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-3 gap-3">
           <Button
             variant="primary"
             size="lg"
@@ -215,6 +217,19 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
           >
             <ReceiveIcon className="w-5 h-5" />
             Receive
+          </Button>
+          <Button
+            variant="outline"
+            size="lg"
+            fullWidth
+            onClick={() => {
+              console.log("Staking button clicked");
+              onStaking?.();
+            }}
+            className="flex items-center justify-center gap-2"
+          >
+            <StakeIcon className="w-5 h-5" />
+            Stake
           </Button>
         </div>
 
@@ -318,6 +333,17 @@ const ReceiveIcon: React.FC<{ className?: string }> = ({ className }) => (
       strokeLinejoin="round"
       strokeWidth={2}
       d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+    />
+  </svg>
+);
+
+const StakeIcon: React.FC<{ className?: string }> = ({ className }) => (
+  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M13 10V3L4 14h7v7l9-11h-7z"
     />
   </svg>
 );

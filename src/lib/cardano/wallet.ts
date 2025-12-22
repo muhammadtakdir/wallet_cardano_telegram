@@ -963,3 +963,476 @@ export const estimateTransactionFee = async (
     return "200000"; // ~0.2 ADA default estimate
   }
 };
+
+// ================================
+// STAKING FUNCTIONS
+// ================================
+
+// Default pool: Cardanesia [ADI]
+const DEFAULT_POOL: Record<CardanoNetwork, { poolId: string; ticker: string; name: string }> = {
+  mainnet: {
+    poolId: "pool1nej3scqpnnl00f54dv0muc6vlkvptjjjptuzrl7j5l8t5hkz2sy",
+    ticker: "ADI",
+    name: "Cardanesia",
+  },
+  preprod: {
+    poolId: "pool1nej3scqpnnl00f54dv0muc6vlkvptjjjptuzrl7j5l8t5hkz2sy", // May differ on testnet
+    ticker: "ADI",
+    name: "Cardanesia (Preprod)",
+  },
+  preview: {
+    poolId: "pool1nej3scqpnnl00f54dv0muc6vlkvptjjjptuzrl7j5l8t5hkz2sy", // May differ on testnet
+    ticker: "ADI", 
+    name: "Cardanesia (Preview)",
+  },
+};
+
+/**
+ * Stake pool information
+ */
+export interface StakePoolInfo {
+  poolId: string;
+  ticker: string;
+  name: string;
+  description?: string;
+  homepage?: string;
+  saturation: number; // percentage 0-100
+  pledge: string; // lovelace
+  margin: number; // percentage 0-100
+  fixedCost: string; // lovelace
+  activeStake: string; // lovelace
+  liveStake: string; // lovelace
+  blocksEpoch: number;
+  blocksMinted: number;
+  ros: number; // Return on Stake percentage
+  delegators: number;
+}
+
+/**
+ * Staking account information
+ */
+export interface StakingInfo {
+  stakeAddress: string;
+  active: boolean;
+  poolId: string | null;
+  poolTicker?: string;
+  poolName?: string;
+  availableRewards: string; // lovelace
+  totalWithdrawn: string; // lovelace
+  controlledAmount: string; // lovelace (total staked)
+}
+
+/**
+ * Epoch reward information
+ */
+export interface EpochReward {
+  epoch: number;
+  amount: string; // lovelace
+  poolId: string;
+}
+
+/**
+ * Get current epoch info from Blockfrost
+ */
+export const getCurrentEpoch = async (): Promise<{
+  epoch: number;
+  startTime: number;
+  endTime: number;
+  slotInEpoch: number;
+  slotsPerEpoch: number;
+} | null> => {
+  try {
+    const apiKey = getBlockfrostApiKey();
+    const baseUrl = getBlockfrostUrl();
+
+    if (!apiKey) return null;
+
+    const response = await fetch(`${baseUrl}/epochs/latest`, {
+      headers: { project_id: apiKey },
+    });
+
+    if (!response.ok) return null;
+
+    const data = await response.json();
+    
+    return {
+      epoch: data.epoch,
+      startTime: data.start_time,
+      endTime: data.end_time,
+      slotInEpoch: data.first_block_time,
+      slotsPerEpoch: 432000, // 5 days worth of slots
+    };
+  } catch (error) {
+    console.error("Error getting current epoch:", error);
+    return null;
+  }
+};
+
+/**
+ * Get stake address from payment address
+ */
+export const getStakeAddressFromAddress = async (address: string): Promise<string | null> => {
+  try {
+    const apiKey = getBlockfrostApiKey();
+    const baseUrl = getBlockfrostUrl();
+
+    if (!apiKey) return null;
+
+    const response = await fetch(`${baseUrl}/addresses/${address}`, {
+      headers: { project_id: apiKey },
+    });
+
+    if (!response.ok) return null;
+
+    const data = await response.json();
+    return data.stake_address || null;
+  } catch (error) {
+    console.error("Error getting stake address:", error);
+    return null;
+  }
+};
+
+/**
+ * Get staking account information
+ */
+export const getStakingInfo = async (stakeAddress: string): Promise<StakingInfo | null> => {
+  try {
+    const apiKey = getBlockfrostApiKey();
+    const baseUrl = getBlockfrostUrl();
+
+    if (!apiKey) return null;
+
+    const response = await fetch(`${baseUrl}/accounts/${stakeAddress}`, {
+      headers: { project_id: apiKey },
+    });
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        // Stake address not registered yet
+        return {
+          stakeAddress,
+          active: false,
+          poolId: null,
+          availableRewards: "0",
+          totalWithdrawn: "0",
+          controlledAmount: "0",
+        };
+      }
+      return null;
+    }
+
+    const data = await response.json();
+    
+    // Get pool info if delegating
+    let poolTicker: string | undefined;
+    let poolName: string | undefined;
+    
+    if (data.pool_id) {
+      const poolInfo = await getPoolInfo(data.pool_id);
+      if (poolInfo) {
+        poolTicker = poolInfo.ticker;
+        poolName = poolInfo.name;
+      }
+    }
+
+    return {
+      stakeAddress,
+      active: data.active,
+      poolId: data.pool_id || null,
+      poolTicker,
+      poolName,
+      availableRewards: data.withdrawable_amount || "0",
+      totalWithdrawn: data.withdrawals_sum || "0",
+      controlledAmount: data.controlled_amount || "0",
+    };
+  } catch (error) {
+    console.error("Error getting staking info:", error);
+    return null;
+  }
+};
+
+/**
+ * Get stake pool information
+ */
+export const getPoolInfo = async (poolId: string): Promise<StakePoolInfo | null> => {
+  try {
+    const apiKey = getBlockfrostApiKey();
+    const baseUrl = getBlockfrostUrl();
+
+    if (!apiKey) return null;
+
+    // Get pool metadata and info in parallel
+    const [poolResponse, metadataResponse] = await Promise.all([
+      fetch(`${baseUrl}/pools/${poolId}`, {
+        headers: { project_id: apiKey },
+      }),
+      fetch(`${baseUrl}/pools/${poolId}/metadata`, {
+        headers: { project_id: apiKey },
+      }),
+    ]);
+
+    if (!poolResponse.ok) return null;
+
+    const poolData = await poolResponse.json();
+    let metadata: { ticker?: string; name?: string; description?: string; homepage?: string } = {};
+    
+    if (metadataResponse.ok) {
+      metadata = await metadataResponse.json();
+    }
+
+    return {
+      poolId,
+      ticker: metadata.ticker || "Unknown",
+      name: metadata.name || "Unknown Pool",
+      description: metadata.description,
+      homepage: metadata.homepage,
+      saturation: poolData.live_saturation ? parseFloat(poolData.live_saturation) * 100 : 0,
+      pledge: poolData.declared_pledge || "0",
+      margin: poolData.margin_cost ? parseFloat(poolData.margin_cost) * 100 : 0,
+      fixedCost: poolData.fixed_cost || "340000000",
+      activeStake: poolData.active_stake || "0",
+      liveStake: poolData.live_stake || "0",
+      blocksEpoch: poolData.blocks_epoch || 0,
+      blocksMinted: poolData.blocks_minted || 0,
+      ros: 0, // Will calculate from rewards history
+      delegators: poolData.live_delegators || 0,
+    };
+  } catch (error) {
+    console.error("Error getting pool info:", error);
+    return null;
+  }
+};
+
+/**
+ * Search stake pools by ticker or name
+ */
+export const searchPools = async (query: string): Promise<StakePoolInfo[]> => {
+  try {
+    const apiKey = getBlockfrostApiKey();
+    const baseUrl = getBlockfrostUrl();
+
+    if (!apiKey) return [];
+
+    // Get list of pools
+    const response = await fetch(`${baseUrl}/pools/extended?count=100`, {
+      headers: { project_id: apiKey },
+    });
+
+    if (!response.ok) return [];
+
+    const pools = await response.json();
+    const results: StakePoolInfo[] = [];
+    const searchLower = query.toLowerCase();
+
+    // Filter and get metadata for matching pools
+    for (const pool of pools.slice(0, 50)) { // Limit search
+      // Get metadata
+      try {
+        const metaResponse = await fetch(`${baseUrl}/pools/${pool.pool_id}/metadata`, {
+          headers: { project_id: apiKey },
+        });
+        
+        if (metaResponse.ok) {
+          const meta = await metaResponse.json();
+          const ticker = meta.ticker?.toLowerCase() || "";
+          const name = meta.name?.toLowerCase() || "";
+          
+          if (ticker.includes(searchLower) || name.includes(searchLower)) {
+            results.push({
+              poolId: pool.pool_id,
+              ticker: meta.ticker || "Unknown",
+              name: meta.name || "Unknown Pool",
+              description: meta.description,
+              homepage: meta.homepage,
+              saturation: pool.live_saturation ? parseFloat(pool.live_saturation) * 100 : 0,
+              pledge: pool.declared_pledge || "0",
+              margin: pool.margin_cost ? parseFloat(pool.margin_cost) * 100 : 0,
+              fixedCost: pool.fixed_cost || "340000000",
+              activeStake: pool.active_stake || "0",
+              liveStake: pool.live_stake || "0",
+              blocksEpoch: pool.blocks_epoch || 0,
+              blocksMinted: pool.blocks_minted || 0,
+              ros: 0,
+              delegators: pool.live_delegators || 0,
+            });
+            
+            if (results.length >= 10) break; // Limit results
+          }
+        }
+      } catch {
+        // Skip pools with no metadata
+      }
+    }
+
+    return results;
+  } catch (error) {
+    console.error("Error searching pools:", error);
+    return [];
+  }
+};
+
+/**
+ * Get default stake pool (Cardanesia ADI)
+ */
+export const getDefaultPool = (): { poolId: string; ticker: string; name: string } => {
+  const network = getCurrentNetwork();
+  return DEFAULT_POOL[network];
+};
+
+/**
+ * Get reward history for stake address (last 5 epochs)
+ */
+export const getRewardHistory = async (stakeAddress: string, count: number = 5): Promise<EpochReward[]> => {
+  try {
+    const apiKey = getBlockfrostApiKey();
+    const baseUrl = getBlockfrostUrl();
+
+    if (!apiKey) return [];
+
+    const response = await fetch(
+      `${baseUrl}/accounts/${stakeAddress}/rewards?count=${count}&order=desc`,
+      { headers: { project_id: apiKey } }
+    );
+
+    if (!response.ok) return [];
+
+    const data = await response.json();
+    
+    return data.map((reward: { epoch: number; amount: string; pool_id: string }) => ({
+      epoch: reward.epoch,
+      amount: reward.amount,
+      poolId: reward.pool_id,
+    }));
+  } catch (error) {
+    console.error("Error getting reward history:", error);
+    return [];
+  }
+};
+
+/**
+ * Delegate to a stake pool
+ */
+export const delegateToPool = async (
+  wallet: MeshWallet,
+  poolId: string
+): Promise<{ success: boolean; txHash?: string; error?: string }> => {
+  try {
+    const provider = createBlockfrostProvider();
+    const utxos = await wallet.getUtxos();
+    const changeAddress = await wallet.getChangeAddress();
+    const rewardAddresses = await wallet.getRewardAddresses();
+
+    if (!utxos || utxos.length === 0) {
+      return { success: false, error: "No UTxOs available in wallet" };
+    }
+
+    if (!rewardAddresses || rewardAddresses.length === 0) {
+      return { success: false, error: "Could not get reward address" };
+    }
+
+    const rewardAddress = rewardAddresses[0];
+
+    // Build delegation transaction
+    const txBuilder = new MeshTxBuilder({
+      fetcher: provider,
+      submitter: provider,
+      verbose: false,
+    });
+
+    // Check if stake address is already registered
+    const stakeInfo = await getStakingInfo(rewardAddress);
+    
+    let unsignedTx: string;
+    
+    if (!stakeInfo || !stakeInfo.active) {
+      // Need to register stake address first (2 ADA deposit) then delegate
+      unsignedTx = await txBuilder
+        .registerStakeCertificate(rewardAddress)
+        .delegateStakeCertificate(rewardAddress, poolId)
+        .changeAddress(changeAddress)
+        .selectUtxosFrom(utxos)
+        .complete();
+    } else {
+      // Already registered, just delegate
+      unsignedTx = await txBuilder
+        .delegateStakeCertificate(rewardAddress, poolId)
+        .changeAddress(changeAddress)
+        .selectUtxosFrom(utxos)
+        .complete();
+    }
+
+    // Sign the transaction
+    const signedTx = await wallet.signTx(unsignedTx);
+
+    // Submit the transaction
+    const txHash = await wallet.submitTx(signedTx);
+
+    return { success: true, txHash };
+  } catch (error) {
+    console.error("Error delegating to pool:", error);
+    const message = error instanceof Error ? error.message : String(error);
+    
+    if (message.includes("INPUTS_EXHAUSTED") || message.includes("insufficient")) {
+      return { success: false, error: "Insufficient funds. Need ~2.2 ADA for first delegation." };
+    }
+    
+    return { success: false, error: message || "Delegation failed" };
+  }
+};
+
+/**
+ * Withdraw staking rewards
+ */
+export const withdrawRewards = async (
+  wallet: MeshWallet
+): Promise<{ success: boolean; txHash?: string; error?: string }> => {
+  try {
+    const provider = createBlockfrostProvider();
+    const utxos = await wallet.getUtxos();
+    const changeAddress = await wallet.getChangeAddress();
+    const rewardAddresses = await wallet.getRewardAddresses();
+
+    if (!utxos || utxos.length === 0) {
+      return { success: false, error: "No UTxOs available in wallet" };
+    }
+
+    if (!rewardAddresses || rewardAddresses.length === 0) {
+      return { success: false, error: "Could not get reward address" };
+    }
+
+    const rewardAddress = rewardAddresses[0];
+    
+    // Get available rewards
+    const stakingInfo = await getStakingInfo(rewardAddress);
+    
+    if (!stakingInfo || stakingInfo.availableRewards === "0") {
+      return { success: false, error: "No rewards available to withdraw" };
+    }
+
+    // Build withdrawal transaction
+    const txBuilder = new MeshTxBuilder({
+      fetcher: provider,
+      submitter: provider,
+      verbose: false,
+    });
+
+    const unsignedTx = await txBuilder
+      .withdrawal(rewardAddress, stakingInfo.availableRewards)
+      .changeAddress(changeAddress)
+      .selectUtxosFrom(utxos)
+      .complete();
+
+    // Sign the transaction
+    const signedTx = await wallet.signTx(unsignedTx);
+
+    // Submit the transaction
+    const txHash = await wallet.submitTx(signedTx);
+
+    return { success: true, txHash };
+  } catch (error) {
+    console.error("Error withdrawing rewards:", error);
+    const message = error instanceof Error ? error.message : String(error);
+    
+    return { success: false, error: message || "Withdrawal failed" };
+  }
+};
