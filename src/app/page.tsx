@@ -109,6 +109,9 @@ export default function WalletPage() {
         hapticFeedback.notificationOccurred("success");
       }
     } catch (err) {
+      // Ensure error is a string for display
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      setPinError(errorMsg);
       if (isInTelegram) {
         hapticFeedback.notificationOccurred("error");
       }
@@ -137,8 +140,10 @@ export default function WalletPage() {
         hapticFeedback.notificationOccurred("success");
       }
       setIsAddingWallet(false);
+      setImportMnemonic(""); // Clear mnemonic from state
       setView("dashboard");
     } else {
+      // Error is already set by the store
       if (isInTelegram) {
         hapticFeedback.notificationOccurred("error");
       }

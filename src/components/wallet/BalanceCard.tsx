@@ -66,7 +66,7 @@ export const BalanceCard: React.FC<BalanceCardProps> = ({
             <span className="text-xl text-gray-500 dark:text-gray-400">ADA</span>
           </div>
         )}
-        {balance && BigInt(balance.lovelace) > 0 && (
+        {balance && Number(balance.lovelace) > 0 && (
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
             ≈ {balance.lovelace} lovelace
           </p>

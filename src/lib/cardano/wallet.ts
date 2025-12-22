@@ -86,6 +86,15 @@ export const getWalletBalance = async (
   try {
     const balance = await wallet.getBalance();
     
+    // Handle case where balance is not an array (new wallet)
+    if (!Array.isArray(balance)) {
+      return {
+        lovelace: "0",
+        ada: "0.000000",
+        assets: [],
+      };
+    }
+    
     // Find lovelace (ADA) in balance
     const lovelaceAsset = balance.find((asset) => asset.unit === "lovelace");
     const lovelace = lovelaceAsset?.quantity || "0";
@@ -99,10 +108,11 @@ export const getWalletBalance = async (
       assets,
     };
   } catch (error) {
-    console.error("Error getting wallet balance:", error);
+    // Log error but return safe defaults (common for new wallets with no UTXOs)
+    console.warn("Error getting wallet balance (expected for new wallets):", error);
     return {
       lovelace: "0",
-      ada: "0",
+      ada: "0.000000",
       assets: [],
     };
   }
@@ -123,6 +133,10 @@ export const getTransactionHistory = async (
 
     if (!apiKey) {
       console.warn("Blockfrost API key not set. Cannot fetch transactions.");
+      return [];
+    }
+
+    if (!address) {
       return [];
     }
 
