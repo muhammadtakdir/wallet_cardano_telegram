@@ -21,9 +21,11 @@ export const AssetDetail: React.FC<AssetDetailProps> = ({ asset, onBack, onSend 
     }
     if (asset.assetName) {
       try {
-        const decoded = Buffer.from(asset.assetName, "hex").toString("utf8");
-        if (/^[\x20-\x7E]+$/.test(decoded)) {
-          return decoded;
+        if (/^[0-9a-fA-F]+$/.test(asset.assetName)) {
+          const decoded = Buffer.from(asset.assetName, "hex").toString("utf8");
+          if (/^[\x20-\x7E]+$/.test(decoded)) {
+            return decoded;
+          }
         }
       } catch {
         // Ignore
@@ -34,9 +36,49 @@ export const AssetDetail: React.FC<AssetDetailProps> = ({ asset, onBack, onSend 
   }, [asset]);
 
   const handleCopy = async (text: string, label: string) => {
-    await navigator.clipboard.writeText(text);
-    setCopied(label);
-    setTimeout(() => setCopied(null), 2000);
+    try {
+      // Try modern clipboard API first
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        // Fallback for older browsers or non-secure contexts
+        const textArea = document.createElement('textarea');
+        textArea.value = text;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-999999px';
+        textArea.style.top = '-999999px';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        
+        try {
+          document.execCommand('copy');
+        } finally {
+          textArea.remove();
+        }
+      }
+      
+      setCopied(label);
+      setTimeout(() => setCopied(null), 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+      // Try one more fallback
+      try {
+        const textArea = document.createElement('textarea');
+        textArea.value = text;
+        textArea.style.position = 'fixed';
+        textArea.style.opacity = '0';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        document.execCommand('copy');
+        textArea.remove();
+        setCopied(label);
+        setTimeout(() => setCopied(null), 2000);
+      } catch (e) {
+        alert('Please copy manually: ' + text);
+      }
+    }
   };
 
   const policyId = asset.policyId || asset.unit.slice(0, 56);
@@ -153,7 +195,7 @@ export const AssetDetail: React.FC<AssetDetailProps> = ({ asset, onBack, onSend 
                 onClick={() => handleCopy(policyId, "policy")}
                 className="text-xs text-blue-600 hover:text-blue-700"
               >
-                {copied === "policy" ? "Copied!" : "Copy"}
+                {copied === "policy" ? "✓ Copied!" : "Copy"}
               </button>
             </div>
             <p className="text-sm font-mono text-gray-900 dark:text-white break-all bg-gray-50 dark:bg-gray-900 p-2 rounded-lg">
@@ -169,7 +211,7 @@ export const AssetDetail: React.FC<AssetDetailProps> = ({ asset, onBack, onSend 
                 onClick={() => handleCopy(assetId, "asset")}
                 className="text-xs text-blue-600 hover:text-blue-700"
               >
-                {copied === "asset" ? "Copied!" : "Copy"}
+                {copied === "asset" ? "✓ Copied!" : "Copy"}
               </button>
             </div>
             <p className="text-sm font-mono text-gray-900 dark:text-white break-all bg-gray-50 dark:bg-gray-900 p-2 rounded-lg">
@@ -186,11 +228,29 @@ export const AssetDetail: React.FC<AssetDetailProps> = ({ asset, onBack, onSend 
                   onClick={() => handleCopy(asset.fingerprint!, "fingerprint")}
                   className="text-xs text-blue-600 hover:text-blue-700"
                 >
-                  {copied === "fingerprint" ? "Copied!" : "Copy"}
+                  {copied === "fingerprint" ? "✓ Copied!" : "Copy"}
                 </button>
               </div>
               <p className="text-sm font-mono text-gray-900 dark:text-white break-all bg-gray-50 dark:bg-gray-900 p-2 rounded-lg">
                 {asset.fingerprint}
+              </p>
+            </div>
+          )}
+
+          {/* Asset Name (Hex) */}
+          {(asset.assetName || asset.unit.length > 56) && (
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs text-gray-500">Asset Name (Hex)</span>
+                <button
+                  onClick={() => handleCopy(asset.assetName || asset.unit.slice(56), "assetName")}
+                  className="text-xs text-blue-600 hover:text-blue-700"
+                >
+                  {copied === "assetName" ? "✓ Copied!" : "Copy"}
+                </button>
+              </div>
+              <p className="text-sm font-mono text-gray-900 dark:text-white break-all bg-gray-50 dark:bg-gray-900 p-2 rounded-lg">
+                {asset.assetName || asset.unit.slice(56)}
               </p>
             </div>
           )}

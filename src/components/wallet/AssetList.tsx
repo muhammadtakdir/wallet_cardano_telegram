@@ -115,20 +115,23 @@ const AssetItem: React.FC<AssetItemProps> = ({ asset, isNFT = false, onClick }) 
     if (asset.assetName) {
       // Try to decode hex asset name
       try {
-        const decoded = Buffer.from(asset.assetName, "hex").toString("utf8");
-        if (/^[\x20-\x7E]+$/.test(decoded)) {
-          return decoded;
+        if (/^[0-9a-fA-F]+$/.test(asset.assetName)) {
+          const decoded = Buffer.from(asset.assetName, "hex").toString("utf8");
+          if (/^[\x20-\x7E]+$/.test(decoded)) {
+            return decoded;
+          }
         }
       } catch {
         // Ignore decode errors
       }
-      return asset.assetName.slice(0, 16);
+      return asset.assetName.length > 20 ? asset.assetName.slice(0, 20) + "..." : asset.assetName;
     }
-    return asset.unit.slice(0, 16);
+    return asset.unit.slice(0, 16) + "...";
   }, [asset]);
 
   const policyId = asset.policyId || asset.unit.slice(0, 56);
-  const shortPolicyId = `${policyId.slice(0, 8)}...${policyId.slice(-8)}`;
+  const assetNameHex = asset.assetName || asset.unit.slice(56);
+  const fingerprint = asset.fingerprint;
 
   return (
     <Card
@@ -139,7 +142,7 @@ const AssetItem: React.FC<AssetItemProps> = ({ asset, isNFT = false, onClick }) 
       <div className="flex items-center gap-3">
         {/* Asset Icon */}
         <div className={`
-          w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0
+          w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 overflow-hidden
           ${isNFT 
             ? "bg-purple-100 dark:bg-purple-900/30" 
             : "bg-blue-100 dark:bg-blue-900/30"
@@ -149,9 +152,12 @@ const AssetItem: React.FC<AssetItemProps> = ({ asset, isNFT = false, onClick }) 
             <img
               src={asset.metadata.logo}
               alt={displayName}
-              className="w-8 h-8 rounded-lg object-cover"
+              className="w-full h-full object-cover"
               onError={(e) => {
                 (e.target as HTMLImageElement).style.display = "none";
+                (e.target as HTMLImageElement).parentElement!.innerHTML = isNFT 
+                  ? '<svg class="w-6 h-6 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>'
+                  : '<svg class="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>';
               }}
             />
           ) : isNFT ? (
@@ -173,19 +179,25 @@ const AssetItem: React.FC<AssetItemProps> = ({ asset, isNFT = false, onClick }) 
               </span>
             )}
           </div>
-          <p className="text-xs text-gray-500 dark:text-gray-400 font-mono truncate">
-            {shortPolicyId}
-          </p>
+          {fingerprint ? (
+            <p className="text-xs text-gray-500 dark:text-gray-400 font-mono truncate">
+              {fingerprint}
+            </p>
+          ) : (
+            <p className="text-xs text-gray-500 dark:text-gray-400 font-mono truncate">
+              {policyId.slice(0, 8)}...{policyId.slice(-8)}
+            </p>
+          )}
         </div>
 
         {/* Quantity */}
-        <div className="text-right">
+        <div className="text-right flex items-center gap-2">
           {!isNFT && (
             <p className="font-semibold text-gray-900 dark:text-white">
               {formatQuantity(asset.quantity, asset.metadata?.decimals)}
             </p>
           )}
-          <ChevronRightIcon className="w-5 h-5 text-gray-400 ml-auto" />
+          <ChevronRightIcon className="w-5 h-5 text-gray-400" />
         </div>
       </div>
     </Card>

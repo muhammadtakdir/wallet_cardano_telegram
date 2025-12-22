@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.3.6] - 2024-12-22 - Improved Asset Display & Copy Functions 📋
+
+### Fixed
+- **Copy Address Fallback**: Fixed copy function for Telegram Mini App compatibility
+  - Uses modern `navigator.clipboard` API when available
+  - Fallback to `document.execCommand('copy')` for older browsers
+  - Works in non-secure contexts (Telegram WebView)
+  - Shows alert with address if all copy methods fail
+
+### Improved
+- **Receive Screen Copy**:
+  - Entire address area is clickable to copy
+  - Copy icon next to "Your Wallet Address" label
+  - "✓ Address copied to clipboard!" feedback message
+  - Hover effect on address area
+
+- **Balance Card Address Copy**:
+  - Clickable address area with hover effect
+  - "✓ Copied!" inline feedback
+  - Improved copy icon visibility
+
+- **Asset List Display**:
+  - Better asset name decoding from hex
+  - Shows fingerprint when available (instead of just policy ID)
+  - Improved icon display with fallback on image load error
+  - Full-size asset icons in rounded containers
+
+- **Asset Detail View**:
+  - Shows Asset Name (Hex) field with copy button
+  - Better hex-to-string decoding for asset names
+  - "✓ Copied!" feedback on all copy buttons
+  - Copy fallback for Telegram Mini App
+
+### Changed
+- `ReceiveScreen.tsx` - Added copy fallback and clickable address area
+- `BalanceCard.tsx` - Added copy fallback and improved address section
+- `AssetList.tsx` - Improved asset item display with fingerprint
+- `AssetDetail.tsx` - Added Asset Name field, fixed copy function
+
+---
+
 ## [0.3.5] - 2024-12-22 - Send Native Tokens & NFTs 🪙
 
 ### Added
