@@ -126,7 +126,7 @@ export const PinInput: React.FC<PinInputProps> = ({
         ))}
       </div>
       {error && (
-        <p className="mt-2 text-sm text-red-500">{error}</p>
+        <p className="mt-2 text-sm text-red-500">{String(error)}</p>
       )}
     </div>
   );

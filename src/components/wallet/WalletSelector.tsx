@@ -264,7 +264,7 @@ export const WalletSelector: React.FC<WalletSelectorProps> = ({
                     {formatAddress(wallet.address)}
                   </p>
                   <p className="text-gray-500 text-xs mt-1">
-                    Created: {new Date(wallet.createdAt).toLocaleDateString()}
+                    Created: {wallet.createdAt ? new Date(wallet.createdAt).toLocaleDateString() : 'Unknown'}
                   </p>
                 </div>
               )}
