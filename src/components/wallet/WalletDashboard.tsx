@@ -3,25 +3,30 @@
 import * as React from "react";
 import { useWalletStore, useTelegram } from "@/hooks";
 import { BalanceCard, TransactionList } from "@/components/wallet";
+import { WalletSelector } from "@/components/wallet/WalletSelector";
 import { Button } from "@/components/ui";
 
 interface WalletDashboardProps {
   onSend?: () => void;
   onReceive?: () => void;
   onSettings?: () => void;
+  onAddWallet?: () => void;
 }
 
 export const WalletDashboard: React.FC<WalletDashboardProps> = ({
   onSend,
   onReceive,
   onSettings,
+  onAddWallet,
 }) => {
   const {
     walletAddress,
+    walletName,
     balance,
     transactions,
     network,
     isLoading,
+    wallets,
     refreshBalance,
     refreshTransactions,
     lockWallet,
@@ -30,6 +35,7 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
   const { isInTelegram, hapticFeedback, showAlert } = useTelegram();
 
   const [isRefreshing, setIsRefreshing] = React.useState(false);
+  const [showWalletSelector, setShowWalletSelector] = React.useState(false);
 
   // Refresh data on mount
   React.useEffect(() => {
@@ -72,12 +78,23 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
       {/* Header */}
       <header className="bg-white dark:bg-gray-800 shadow-sm sticky top-0 z-10">
         <div className="px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowWalletSelector(true)}
+            className="flex items-center gap-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg px-2 py-1 transition-colors"
+          >
             <WalletIcon className="w-6 h-6 text-blue-600" />
-            <h1 className="text-lg font-semibold text-gray-900 dark:text-white">
-              Cardano Wallet
-            </h1>
-          </div>
+            <div className="text-left">
+              <h1 className="text-lg font-semibold text-gray-900 dark:text-white leading-tight">
+                {walletName || "Cardano Wallet"}
+              </h1>
+              {wallets.length > 1 && (
+                <span className="text-xs text-gray-500">
+                  {wallets.length} wallets
+                </span>
+              )}
+            </div>
+            <ChevronDownIcon className="w-4 h-4 text-gray-400 ml-1" />
+          </button>
           <div className="flex items-center gap-2">
             <button
               onClick={onSettings}
@@ -94,6 +111,16 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
           </div>
         </div>
       </header>
+
+      {/* Wallet Selector Modal */}
+      <WalletSelector
+        isOpen={showWalletSelector}
+        onClose={() => setShowWalletSelector(false)}
+        onAddWallet={() => {
+          setShowWalletSelector(false);
+          onAddWallet?.();
+        }}
+      />
 
       {/* Main Content */}
       <main className="px-4 py-6 space-y-6 pb-24">
@@ -162,6 +189,17 @@ const WalletIcon: React.FC<{ className?: string }> = ({ className }) => (
       strokeLinejoin="round"
       strokeWidth={2}
       d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"
+    />
+  </svg>
+);
+
+const ChevronDownIcon: React.FC<{ className?: string }> = ({ className }) => (
+  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M19 9l-7 7-7-7"
     />
   </svg>
 );

@@ -1,9 +1,15 @@
 import CryptoJS from "crypto-js";
 import {
-  STORAGE_KEYS,
   getStorageItem,
   setStorageItem,
   removeStorageItem,
+  generateWalletId,
+  addWalletToList,
+  removeWalletFromList,
+  getWalletsList,
+  setActiveWalletId,
+  getActiveWalletId,
+  type StoredWalletInfo,
 } from "./index";
 
 /**
@@ -15,7 +21,15 @@ export interface EncryptedWalletData {
   iv: string;
   timestamp: number;
   version: number;
+  pinHash: string;
 }
+
+/**
+ * Storage key for individual wallet
+ */
+const getWalletStorageKey = (walletId: string): string => {
+  return `cardano_wallet_${walletId}`;
+};
 
 /**
  * Encryption configuration
@@ -84,14 +98,21 @@ export const verifyPin = (pin: string, storedHash: string): boolean => {
  * @param mnemonic - The BIP-39 mnemonic phrase (space-separated words)
  * @param pin - User's PIN for encryption
  * @param walletAddress - The derived wallet address (for display without decryption)
- * @returns boolean indicating success
+ * @param walletName - Display name for the wallet
+ * @param walletId - Optional wallet ID (generates new if not provided)
+ * @returns The wallet ID if successful, null if failed
  */
 export const encryptAndSaveWallet = (
   mnemonic: string,
   pin: string,
-  walletAddress: string
-): boolean => {
+  walletAddress: string,
+  walletName?: string,
+  walletId?: string
+): string | null => {
   try {
+    // Generate or use provided wallet ID
+    const id = walletId || generateWalletId();
+    
     // Generate cryptographic values
     const salt = generateSalt();
     const iv = generateIV();
@@ -113,27 +134,39 @@ export const encryptAndSaveWallet = (
       iv,
       timestamp: Date.now(),
       version: ENCRYPTION_CONFIG.version,
+      pinHash: hashPin(pin),
     };
 
-    // Store encrypted wallet data
-    setStorageItem(STORAGE_KEYS.ENCRYPTED_WALLET, JSON.stringify(encryptedData));
+    // Store encrypted wallet data with unique key
+    const storageKey = getWalletStorageKey(id);
+    setStorageItem(storageKey, JSON.stringify(encryptedData));
 
-    // Store wallet address (public, for display)
-    setStorageItem(STORAGE_KEYS.WALLET_ADDRESS, walletAddress);
+    // Check if wallet already exists in list (for updates)
+    const existingWallets = getWalletsList();
+    const existingWallet = existingWallets.find((w) => w.id === id);
+    
+    if (!existingWallet) {
+      // Get wallet count for default name
+      const defaultName = walletName || `Wallet ${existingWallets.length + 1}`;
 
-    // Store PIN hash for verification
-    setStorageItem(STORAGE_KEYS.PIN_HASH, hashPin(pin));
+      // Add wallet to list
+      const walletInfo: StoredWalletInfo = {
+        id,
+        name: defaultName,
+        address: walletAddress,
+        network: process.env.NEXT_PUBLIC_CARDANO_NETWORK || "preview",
+        createdAt: Date.now(),
+      };
+      addWalletToList(walletInfo);
+    }
 
-    // Store network
-    setStorageItem(
-      STORAGE_KEYS.WALLET_NETWORK,
-      process.env.NEXT_PUBLIC_CARDANO_NETWORK || "preprod"
-    );
+    // Set as active wallet
+    setActiveWalletId(id);
 
-    return true;
+    return id;
   } catch (error) {
     console.error("Error encrypting wallet:", error);
-    return false;
+    return null;
   }
 };
 
@@ -141,26 +174,34 @@ export const encryptAndSaveWallet = (
  * Decrypt wallet mnemonic from localStorage
  * 
  * @param pin - User's PIN for decryption
+ * @param walletId - The wallet ID to decrypt (uses active wallet if not provided)
  * @returns The decrypted mnemonic or null if failed
  */
-export const decryptWallet = (pin: string): string | null => {
+export const decryptWallet = (pin: string, walletId?: string): string | null => {
   try {
+    // Get wallet ID
+    const id = walletId || getActiveWalletId();
+    if (!id) {
+      console.error("No wallet ID provided or active");
+      return null;
+    }
+
     // Get encrypted data from storage
-    const storedData = getStorageItem(STORAGE_KEYS.ENCRYPTED_WALLET);
+    const storageKey = getWalletStorageKey(id);
+    const storedData = getStorageItem(storageKey);
     if (!storedData) {
       console.error("No wallet found in storage");
       return null;
     }
 
+    // Parse encrypted data
+    const encryptedData: EncryptedWalletData = JSON.parse(storedData);
+
     // Verify PIN first
-    const storedPinHash = getStorageItem(STORAGE_KEYS.PIN_HASH);
-    if (storedPinHash && !verifyPin(pin, storedPinHash)) {
+    if (encryptedData.pinHash && !verifyPin(pin, encryptedData.pinHash)) {
       console.error("Invalid PIN");
       return null;
     }
-
-    // Parse encrypted data
-    const encryptedData: EncryptedWalletData = JSON.parse(storedData);
 
     // Derive the same key using stored salt
     const key = deriveKey(pin, encryptedData.salt);
@@ -197,24 +238,38 @@ export const decryptWallet = (pin: string): string | null => {
  * 
  * @param oldPin - Current PIN
  * @param newPin - New PIN to set
+ * @param walletId - The wallet ID (uses active wallet if not provided)
  * @returns boolean indicating success
  */
-export const changeWalletPin = (oldPin: string, newPin: string): boolean => {
+export const changeWalletPin = (
+  oldPin: string,
+  newPin: string,
+  walletId?: string
+): boolean => {
   try {
+    const id = walletId || getActiveWalletId();
+    if (!id) return false;
+
     // Decrypt with old PIN
-    const mnemonic = decryptWallet(oldPin);
+    const mnemonic = decryptWallet(oldPin, id);
     if (!mnemonic) {
       return false;
     }
 
-    // Get wallet address
-    const walletAddress = getStorageItem(STORAGE_KEYS.WALLET_ADDRESS);
-    if (!walletAddress) {
-      return false;
-    }
+    // Get wallet info from list
+    const wallets = getWalletsList();
+    const wallet = wallets.find((w) => w.id === id);
+    if (!wallet) return false;
 
     // Re-encrypt with new PIN
-    return encryptAndSaveWallet(mnemonic, newPin, walletAddress);
+    const result = encryptAndSaveWallet(
+      mnemonic,
+      newPin,
+      wallet.address,
+      wallet.name,
+      id
+    );
+    return result !== null;
   } catch (error) {
     console.error("Error changing PIN:", error);
     return false;
@@ -223,25 +278,95 @@ export const changeWalletPin = (oldPin: string, newPin: string): boolean => {
 
 /**
  * Delete wallet from storage
+ * 
+ * @param walletId - The wallet ID to delete (uses active wallet if not provided)
  */
-export const deleteWallet = (): void => {
-  removeStorageItem(STORAGE_KEYS.ENCRYPTED_WALLET);
-  removeStorageItem(STORAGE_KEYS.WALLET_ADDRESS);
-  removeStorageItem(STORAGE_KEYS.PIN_HASH);
-  removeStorageItem(STORAGE_KEYS.WALLET_NETWORK);
-  removeStorageItem(STORAGE_KEYS.LAST_SYNC);
+export const deleteWallet = (walletId?: string): void => {
+  const id = walletId || getActiveWalletId();
+  if (!id) return;
+
+  // Remove encrypted data
+  const storageKey = getWalletStorageKey(id);
+  removeStorageItem(storageKey);
+
+  // Remove from list
+  removeWalletFromList(id);
+
+  // If this was the active wallet, set another one as active
+  const wallets = getWalletsList();
+  if (wallets.length > 0) {
+    setActiveWalletId(wallets[0].id);
+  }
+};
+
+/**
+ * Delete all wallets from storage
+ */
+export const deleteAllWallets = (): void => {
+  const wallets = getWalletsList();
+  wallets.forEach((wallet) => {
+    const storageKey = getWalletStorageKey(wallet.id);
+    removeStorageItem(storageKey);
+  });
+  removeStorageItem("cardano_wallets_list");
+  removeStorageItem("cardano_active_wallet_id");
 };
 
 /**
  * Get stored wallet address without decryption
+ * 
+ * @param walletId - The wallet ID (uses active wallet if not provided)
  */
-export const getStoredWalletAddress = (): string | null => {
-  return getStorageItem(STORAGE_KEYS.WALLET_ADDRESS);
+export const getStoredWalletAddress = (walletId?: string): string | null => {
+  const id = walletId || getActiveWalletId();
+  if (!id) return null;
+
+  const wallets = getWalletsList();
+  const wallet = wallets.find((w) => w.id === id);
+  return wallet?.address || null;
 };
 
 /**
  * Check if PIN is set for wallet
+ * 
+ * @param walletId - The wallet ID (uses active wallet if not provided)
  */
-export const hasPinSet = (): boolean => {
-  return getStorageItem(STORAGE_KEYS.PIN_HASH) !== null;
+export const hasPinSet = (walletId?: string): boolean => {
+  const id = walletId || getActiveWalletId();
+  if (!id) return false;
+
+  const storageKey = getWalletStorageKey(id);
+  const storedData = getStorageItem(storageKey);
+  if (!storedData) return false;
+
+  try {
+    const encryptedData: EncryptedWalletData = JSON.parse(storedData);
+    return !!encryptedData.pinHash;
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Rename wallet
+ * 
+ * @param walletId - The wallet ID
+ * @param newName - New name for the wallet
+ */
+export const renameWallet = (walletId: string, newName: string): boolean => {
+  const wallets = getWalletsList();
+  const index = wallets.findIndex((w) => w.id === walletId);
+  if (index === -1) return false;
+
+  wallets[index].name = newName;
+  setStorageItem("cardano_wallets_list", JSON.stringify(wallets));
+  return true;
+};
+
+/**
+ * Get wallet info by ID
+ */
+export const getWalletInfo = (walletId: string): StoredWalletInfo | null => {
+  const wallets = getWalletsList();
+  return wallets.find((w) => w.id === walletId) || null;
 };

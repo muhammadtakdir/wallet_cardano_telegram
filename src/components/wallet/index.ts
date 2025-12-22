@@ -9,3 +9,4 @@ export type { TransactionListProps } from "./TransactionList";
 
 export { WalletDashboard } from "./WalletDashboard";
 
+export { WalletSelector } from "./WalletSelector";

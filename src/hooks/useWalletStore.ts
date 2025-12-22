@@ -18,10 +18,19 @@ import {
   encryptAndSaveWallet,
   decryptWallet,
   deleteWallet as deleteStoredWallet,
+  deleteAllWallets,
   getStoredWalletAddress,
   hasPinSet,
+  renameWallet,
+  getWalletInfo,
 } from "@/lib/storage/encryption";
-import { hasStoredWallet } from "@/lib/storage";
+import {
+  hasStoredWallet,
+  getWalletsList,
+  getActiveWalletId,
+  setActiveWalletId,
+  type StoredWalletInfo,
+} from "@/lib/storage";
 
 /**
  * Wallet state interface
@@ -32,8 +41,13 @@ export interface WalletState {
   isLoading: boolean;
   error: string | null;
 
-  // Wallet data
+  // Multi-wallet support
+  wallets: StoredWalletInfo[];
+  activeWalletId: string | null;
+
+  // Current wallet data
   walletAddress: string | null;
+  walletName: string | null;
   balance: WalletBalance | null;
   transactions: TransactionInfo[];
   network: CardanoNetwork;
@@ -42,23 +56,29 @@ export interface WalletState {
   _walletInstance: MeshWallet | null;
 
   // Actions
-  createNewWallet: (pin: string, wordCount?: 12 | 15 | 18 | 21 | 24) => Promise<string>;
-  importWallet: (mnemonic: string, pin: string) => Promise<boolean>;
-  unlockWallet: (pin: string) => Promise<boolean>;
+  createNewWallet: (pin: string, name?: string, wordCount?: 12 | 15 | 18 | 21 | 24) => Promise<string>;
+  importWallet: (mnemonic: string, pin: string, name?: string) => Promise<boolean>;
+  unlockWallet: (pin: string, walletId?: string) => Promise<boolean>;
   lockWallet: () => void;
-  deleteWallet: () => void;
+  switchWallet: (walletId: string, pin: string) => Promise<boolean>;
+  deleteWallet: (walletId?: string) => void;
+  deleteAllWallets: () => void;
+  renameWallet: (walletId: string, newName: string) => boolean;
   refreshBalance: () => Promise<void>;
   refreshTransactions: () => Promise<void>;
+  refreshWalletsList: () => void;
   setError: (error: string | null) => void;
   clearError: () => void;
   hasStoredWallet: () => boolean;
+  getWalletCount: () => number;
 }
 
 /**
  * Zustand store for wallet state management
  * 
  * This store handles:
- * - Wallet creation and import
+ * - Multiple wallet creation and import
+ * - Wallet switching
  * - Wallet unlocking with PIN
  * - Balance and transaction fetching
  * - Secure state management
@@ -70,17 +90,20 @@ export const useWalletStore = create<WalletState>()(
       isLoggedIn: false,
       isLoading: false,
       error: null,
+      wallets: [],
+      activeWalletId: null,
       walletAddress: null,
+      walletName: null,
       balance: null,
       transactions: [],
-      network: (process.env.NEXT_PUBLIC_CARDANO_NETWORK as CardanoNetwork) || "preprod",
+      network: (process.env.NEXT_PUBLIC_CARDANO_NETWORK as CardanoNetwork) || "preview",
       _walletInstance: null,
 
       /**
        * Create a new wallet with a fresh mnemonic
        * Returns the mnemonic for user backup (MUST be shown to user!)
        */
-      createNewWallet: async (pin: string, wordCount = 24) => {
+      createNewWallet: async (pin: string, name?: string, wordCount = 24) => {
         set({ isLoading: true, error: null });
 
         try {
@@ -90,19 +113,29 @@ export const useWalletStore = create<WalletState>()(
           // Create wallet instance
           const { wallet, address, network } = await createWalletFromMnemonic(mnemonic);
 
+          // Get wallet count for default name
+          const existingWallets = getWalletsList();
+          const walletName = name || `Wallet ${existingWallets.length + 1}`;
+
           // Encrypt and save to localStorage
-          const saved = encryptAndSaveWallet(mnemonic, pin, address);
-          if (!saved) {
+          const walletId = encryptAndSaveWallet(mnemonic, pin, address, walletName);
+          if (!walletId) {
             throw new Error("Failed to save wallet securely");
           }
 
           // Get initial balance
           const balance = await getWalletBalance(wallet);
 
+          // Refresh wallets list
+          const wallets = getWalletsList();
+
           set({
             isLoggedIn: true,
             isLoading: false,
+            wallets,
+            activeWalletId: walletId,
             walletAddress: address,
+            walletName,
             balance,
             network,
             _walletInstance: wallet,
@@ -121,7 +154,7 @@ export const useWalletStore = create<WalletState>()(
       /**
        * Import existing wallet from mnemonic
        */
-      importWallet: async (mnemonic: string, pin: string) => {
+      importWallet: async (mnemonic: string, pin: string, name?: string) => {
         set({ isLoading: true, error: null });
 
         try {
@@ -134,9 +167,13 @@ export const useWalletStore = create<WalletState>()(
           // Create wallet instance
           const { wallet, address, network } = await createWalletFromMnemonic(normalizedMnemonic);
 
+          // Get wallet count for default name
+          const existingWallets = getWalletsList();
+          const walletName = name || `Wallet ${existingWallets.length + 1}`;
+
           // Encrypt and save to localStorage
-          const saved = encryptAndSaveWallet(normalizedMnemonic, pin, address);
-          if (!saved) {
+          const walletId = encryptAndSaveWallet(normalizedMnemonic, pin, address, walletName);
+          if (!walletId) {
             throw new Error("Failed to save wallet securely");
           }
 
@@ -146,10 +183,16 @@ export const useWalletStore = create<WalletState>()(
           // Get transaction history
           const transactions = await getTransactionHistory(address);
 
+          // Refresh wallets list
+          const wallets = getWalletsList();
+
           set({
             isLoggedIn: true,
             isLoading: false,
+            wallets,
+            activeWalletId: walletId,
             walletAddress: address,
+            walletName,
             balance,
             transactions,
             network,
@@ -167,12 +210,21 @@ export const useWalletStore = create<WalletState>()(
       /**
        * Unlock wallet with PIN
        */
-      unlockWallet: async (pin: string) => {
+      unlockWallet: async (pin: string, walletId?: string) => {
         set({ isLoading: true, error: null });
 
         try {
+          // Get wallet ID (use provided or active)
+          const id = walletId || getActiveWalletId();
+          if (!id) {
+            throw new Error("No wallet to unlock");
+          }
+
+          // Set as active wallet
+          setActiveWalletId(id);
+
           // Decrypt mnemonic from storage
-          const mnemonic = decryptWallet(pin);
+          const mnemonic = decryptWallet(pin, id);
           if (!mnemonic) {
             throw new Error("Invalid PIN or wallet data corrupted");
           }
@@ -180,16 +232,25 @@ export const useWalletStore = create<WalletState>()(
           // Create wallet instance
           const { wallet, address, network } = await createWalletFromMnemonic(mnemonic);
 
+          // Get wallet info
+          const walletInfo = getWalletInfo(id);
+
           // Get balance
           const balance = await getWalletBalance(wallet);
 
           // Get transaction history
           const transactions = await getTransactionHistory(address);
 
+          // Refresh wallets list
+          const wallets = getWalletsList();
+
           set({
             isLoggedIn: true,
             isLoading: false,
+            wallets,
+            activeWalletId: id,
             walletAddress: address,
+            walletName: walletInfo?.name || null,
             balance,
             transactions,
             network,
@@ -211,27 +272,80 @@ export const useWalletStore = create<WalletState>()(
         set({
           isLoggedIn: false,
           _walletInstance: null,
-          // Keep address and balance for display on lock screen
+          // Keep wallets list and active wallet ID for quick unlock
         });
       },
 
       /**
-       * Delete wallet completely
+       * Switch to a different wallet
        */
-      deleteWallet: () => {
-        // Clear storage
-        deleteStoredWallet();
+      switchWallet: async (walletId: string, pin: string) => {
+        return get().unlockWallet(pin, walletId);
+      },
 
-        // Reset state
+      /**
+       * Delete a specific wallet
+       */
+      deleteWallet: (walletId?: string) => {
+        const id = walletId || get().activeWalletId;
+        if (!id) return;
+
+        // Clear storage
+        deleteStoredWallet(id);
+
+        // Refresh wallets list
+        const wallets = getWalletsList();
+        const newActiveId = wallets.length > 0 ? wallets[0].id : null;
+
+        // Reset state if deleting active wallet
+        if (id === get().activeWalletId) {
+          set({
+            isLoggedIn: false,
+            wallets,
+            activeWalletId: newActiveId,
+            walletAddress: newActiveId ? getStoredWalletAddress(newActiveId) : null,
+            walletName: newActiveId ? getWalletInfo(newActiveId)?.name || null : null,
+            balance: null,
+            transactions: [],
+            _walletInstance: null,
+          });
+        } else {
+          set({ wallets });
+        }
+      },
+
+      /**
+       * Delete all wallets
+       */
+      deleteAllWallets: () => {
+        deleteAllWallets();
         set({
           isLoggedIn: false,
           isLoading: false,
           error: null,
+          wallets: [],
+          activeWalletId: null,
           walletAddress: null,
+          walletName: null,
           balance: null,
           transactions: [],
           _walletInstance: null,
         });
+      },
+
+      /**
+       * Rename a wallet
+       */
+      renameWallet: (walletId: string, newName: string) => {
+        const success = renameWallet(walletId, newName);
+        if (success) {
+          const wallets = getWalletsList();
+          set({ wallets });
+          if (walletId === get().activeWalletId) {
+            set({ walletName: newName });
+          }
+        }
+        return success;
       },
 
       /**
@@ -271,6 +385,18 @@ export const useWalletStore = create<WalletState>()(
       },
 
       /**
+       * Refresh wallets list from storage
+       */
+      refreshWalletsList: () => {
+        const wallets = getWalletsList();
+        const activeId = getActiveWalletId();
+        set({ 
+          wallets,
+          activeWalletId: activeId,
+        });
+      },
+
+      /**
        * Set error message
        */
       setError: (error: string | null) => {
@@ -285,10 +411,17 @@ export const useWalletStore = create<WalletState>()(
       },
 
       /**
-       * Check if wallet exists in storage
+       * Check if any wallet exists in storage
        */
       hasStoredWallet: () => {
         return hasStoredWallet();
+      },
+
+      /**
+       * Get wallet count
+       */
+      getWalletCount: () => {
+        return getWalletsList().length;
       },
     }),
     {
@@ -296,7 +429,7 @@ export const useWalletStore = create<WalletState>()(
       storage: createJSONStorage(() => localStorage),
       // Only persist non-sensitive data
       partialize: (state) => ({
-        walletAddress: state.walletAddress,
+        activeWalletId: state.activeWalletId,
         network: state.network,
         // Never persist: mnemonic, _walletInstance, PIN
       }),
@@ -309,13 +442,16 @@ export const useWalletStore = create<WalletState>()(
  */
 export const useWalletStatus = () => {
   const hasWallet = hasStoredWallet();
-  const hasPIN = hasPinSet();
-  const storedAddress = getStoredWalletAddress();
+  const activeWalletId = getActiveWalletId();
+  const hasPIN = activeWalletId ? hasPinSet(activeWalletId) : false;
+  const storedAddress = activeWalletId ? getStoredWalletAddress(activeWalletId) : null;
+  const walletCount = getWalletsList().length;
 
   return {
     hasWallet,
     hasPIN,
     storedAddress,
+    walletCount,
     needsSetup: !hasWallet,
     needsUnlock: hasWallet && !hasPIN,
   };
@@ -328,8 +464,11 @@ export const useWalletData = () => {
   return useWalletStore((state) => ({
     isLoggedIn: state.isLoggedIn,
     walletAddress: state.walletAddress,
+    walletName: state.walletName,
     balance: state.balance,
     network: state.network,
+    wallets: state.wallets,
+    activeWalletId: state.activeWalletId,
   }));
 };
 
@@ -342,8 +481,12 @@ export const useWalletActions = () => {
     importWallet: state.importWallet,
     unlockWallet: state.unlockWallet,
     lockWallet: state.lockWallet,
+    switchWallet: state.switchWallet,
     deleteWallet: state.deleteWallet,
+    deleteAllWallets: state.deleteAllWallets,
+    renameWallet: state.renameWallet,
     refreshBalance: state.refreshBalance,
     refreshTransactions: state.refreshTransactions,
+    refreshWalletsList: state.refreshWalletsList,
   }));
 };

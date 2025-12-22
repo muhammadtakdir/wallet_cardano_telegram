@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useWalletStore, useTelegram } from "@/hooks";
-import { hasStoredWallet } from "@/lib/storage";
+import { hasStoredWallet, getWalletsList } from "@/lib/storage";
 import { WalletDashboard, MnemonicDisplay } from "@/components/wallet";
 import { Card, Button, PinInput, Input } from "@/components/ui";
 
@@ -17,6 +17,7 @@ export default function WalletPage() {
     importWallet,
     unlockWallet,
     clearError,
+    deleteAllWallets,
   } = useWalletStore();
 
   const { isInTelegram, ready, expand, hapticFeedback } = useTelegram();
@@ -27,6 +28,8 @@ export default function WalletPage() {
   const [mnemonic, setMnemonic] = React.useState("");
   const [importMnemonic, setImportMnemonic] = React.useState("");
   const [pinError, setPinError] = React.useState("");
+  const [walletName, setWalletName] = React.useState("");
+  const [isAddingWallet, setIsAddingWallet] = React.useState(false);
 
   // Initialize Telegram WebApp
   React.useEffect(() => {
@@ -66,7 +69,24 @@ export default function WalletPage() {
     setPinError("");
     setPin("");
     setConfirmPin("");
+    setWalletName("");
   }, [view, clearError]);
+
+  // Handle adding a new wallet from dashboard
+  const handleAddWallet = () => {
+    setIsAddingWallet(true);
+    setView("setup");
+  };
+
+  // Handle back navigation
+  const handleBack = () => {
+    if (isAddingWallet && hasStoredWallet()) {
+      setIsAddingWallet(false);
+      setView("dashboard");
+    } else {
+      setView("setup");
+    }
+  };
 
   // Handle create wallet
   const handleCreateWallet = async () => {
@@ -80,7 +100,8 @@ export default function WalletPage() {
     }
 
     try {
-      const newMnemonic = await createNewWallet(pin);
+      const name = walletName.trim() || undefined;
+      const newMnemonic = await createNewWallet(pin, name);
       setMnemonic(newMnemonic);
       setView("backup");
       if (isInTelegram) {
@@ -108,11 +129,13 @@ export default function WalletPage() {
       return;
     }
 
-    const success = await importWallet(importMnemonic, pin);
+    const name = walletName.trim() || undefined;
+    const success = await importWallet(importMnemonic, pin, name);
     if (success) {
       if (isInTelegram) {
         hapticFeedback.notificationOccurred("success");
       }
+      setIsAddingWallet(false);
       setView("dashboard");
     } else {
       if (isInTelegram) {
@@ -152,15 +175,31 @@ export default function WalletPage() {
 
   // Render setup choice
   if (view === "setup") {
+    const walletCount = getWalletsList().length;
+    
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-gray-50 dark:bg-gray-900">
+        {/* Back button when adding wallet */}
+        {isAddingWallet && (
+          <button
+            onClick={handleBack}
+            className="absolute top-6 left-6 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 flex items-center gap-1"
+          >
+            <BackIcon className="w-5 h-5" />
+            Back
+          </button>
+        )}
+        
         <div className="text-center mb-8">
           <WalletLogo className="w-20 h-20 mx-auto mb-4 text-blue-600" />
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
-            Cardano Wallet
+            {isAddingWallet ? "Add New Wallet" : "Cardano Wallet"}
           </h1>
           <p className="text-gray-500 dark:text-gray-400">
-            Non-custodial wallet for Telegram
+            {isAddingWallet 
+              ? `You have ${walletCount} wallet${walletCount !== 1 ? 's' : ''}`
+              : "Non-custodial wallet for Telegram"
+            }
           </p>
         </div>
 
@@ -196,7 +235,7 @@ export default function WalletPage() {
     return (
       <div className="min-h-screen p-6 bg-gray-50 dark:bg-gray-900">
         <button
-          onClick={() => setView("setup")}
+          onClick={handleBack}
           className="mb-6 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 flex items-center gap-1"
         >
           <BackIcon className="w-5 h-5" />
@@ -211,6 +250,14 @@ export default function WalletPage() {
         </p>
 
         <Card padding="lg" className="space-y-6">
+          <Input
+            label="Wallet Name (optional)"
+            placeholder="e.g., Main Wallet, Trading, Savings"
+            value={walletName}
+            onChange={(e) => setWalletName(e.target.value)}
+            helperText="Give your wallet a name for easy identification"
+          />
+
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
               Enter PIN (6+ digits)
@@ -257,7 +304,7 @@ export default function WalletPage() {
     return (
       <div className="min-h-screen p-6 bg-gray-50 dark:bg-gray-900">
         <button
-          onClick={() => setView("setup")}
+          onClick={handleBack}
           className="mb-6 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 flex items-center gap-1"
         >
           <BackIcon className="w-5 h-5" />
@@ -272,6 +319,14 @@ export default function WalletPage() {
         </p>
 
         <Card padding="lg" className="space-y-6">
+          <Input
+            label="Wallet Name (optional)"
+            placeholder="e.g., Main Wallet, Trading, Savings"
+            value={walletName}
+            onChange={(e) => setWalletName(e.target.value)}
+            helperText="Give your wallet a name for easy identification"
+          />
+
           <Input
             label="Recovery Phrase"
             placeholder="Enter your 12, 15, 18, 21, or 24 word phrase"
@@ -334,6 +389,7 @@ export default function WalletPage() {
           mnemonic={mnemonic}
           onConfirmed={() => {
             setMnemonic(""); // Clear mnemonic from state
+            setIsAddingWallet(false);
             setView("dashboard");
           }}
         />
@@ -373,14 +429,14 @@ export default function WalletPage() {
         <button
           onClick={() => {
             // Show reset option
-            if (confirm("This will delete your wallet. Make sure you have your recovery phrase backed up. Continue?")) {
-              useWalletStore.getState().deleteWallet();
+            if (confirm("This will delete ALL your wallets. Make sure you have your recovery phrases backed up. Continue?")) {
+              deleteAllWallets();
               setView("setup");
             }
           }}
           className="mt-8 text-sm text-red-500 hover:text-red-600"
         >
-          Forgot PIN? Reset Wallet
+          Forgot PIN? Reset All Wallets
         </button>
       </div>
     );
@@ -388,7 +444,7 @@ export default function WalletPage() {
 
   // Render dashboard
   if (view === "dashboard") {
-    return <WalletDashboard />;
+    return <WalletDashboard onAddWallet={handleAddWallet} />;
   }
 
   return null;
