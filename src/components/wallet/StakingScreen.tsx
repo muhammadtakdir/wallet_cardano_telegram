@@ -10,6 +10,7 @@ import {
   getRewardHistory,
   searchPools,
   getDefaultPool,
+  findDefaultPool,
   delegateToPool,
   withdrawRewards,
   getCurrentEpoch,
@@ -118,12 +119,11 @@ export const StakingScreen: React.FC<StakingScreenProps> = ({ onBack }) => {
   };
 
   // Start delegation
-  const handleStartDelegation = (pool?: StakePoolInfo) => {
+  const handleStartDelegation = async (pool?: StakePoolInfo) => {
     const targetPool = pool || selectedPool;
     if (!targetPool) {
-      // Use default pool
-      const defaultPool = getDefaultPool();
-      handleLoadDefaultPool(defaultPool.poolId);
+      // Search for default pool dynamically
+      await handleLoadDefaultPool();
       return;
     }
     setSelectedPool(targetPool);
@@ -131,38 +131,27 @@ export const StakingScreen: React.FC<StakingScreenProps> = ({ onBack }) => {
     setStep("confirm");
   };
 
-  // Load default pool info
-  const handleLoadDefaultPool = async (poolId: string) => {
+  // Load default pool info (search by ticker)
+  const handleLoadDefaultPool = async () => {
     setIsLoading(true);
+    setError(null);
     try {
-      const poolInfo = await getPoolInfo(poolId);
+      // Search for the default pool (Cardanesia ADI)
+      const poolInfo = await findDefaultPool();
       if (poolInfo) {
         setSelectedPool(poolInfo);
         setAction("delegate");
         setStep("confirm");
       } else {
-        // Fallback to basic info
+        // Pool not found on this network
         const defaultPool = getDefaultPool();
-        setSelectedPool({
-          poolId: defaultPool.poolId,
-          ticker: defaultPool.ticker,
-          name: defaultPool.name,
-          saturation: 0,
-          pledge: "0",
-          margin: 0,
-          fixedCost: "340000000",
-          activeStake: "0",
-          liveStake: "0",
-          blocksEpoch: 0,
-          blocksMinted: 0,
-          ros: 0,
-          delegators: 0,
-        });
-        setAction("delegate");
-        setStep("confirm");
+        setError(`Pool [${defaultPool.ticker}] ${defaultPool.name} not found on ${network}. Please search for another pool.`);
+        setStep("search");
       }
     } catch (err) {
       console.error("Error loading default pool:", err);
+      setError("Failed to find default pool. Please search manually.");
+      setStep("search");
     } finally {
       setIsLoading(false);
     }
@@ -461,8 +450,7 @@ export const StakingScreen: React.FC<StakingScreenProps> = ({ onBack }) => {
 
         {/* Default Pool Suggestion */}
         <Card padding="md" className="mb-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800" onClick={() => {
-          const defaultPool = getDefaultPool();
-          handleLoadDefaultPool(defaultPool.poolId);
+          handleLoadDefaultPool();
         }}>
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center">
@@ -470,11 +458,22 @@ export const StakingScreen: React.FC<StakingScreenProps> = ({ onBack }) => {
             </div>
             <div className="flex-1">
               <p className="font-medium text-gray-900 dark:text-white">[ADI] Cardanesia</p>
-              <p className="text-sm text-gray-500">Recommended Pool</p>
+              <p className="text-sm text-gray-500">Recommended Pool (if available)</p>
             </div>
-            <ChevronRightIcon className="w-5 h-5 text-gray-400" />
+            {isLoading ? (
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600" />
+            ) : (
+              <ChevronRightIcon className="w-5 h-5 text-gray-400" />
+            )}
           </div>
         </Card>
+
+        {/* Error message */}
+        {error && (
+          <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+            <p className="text-sm text-yellow-800 dark:text-yellow-200">{error}</p>
+          </div>
+        )}
 
         {/* Search Results */}
         {searchResults.length > 0 && (

@@ -968,24 +968,9 @@ export const estimateTransactionFee = async (
 // STAKING FUNCTIONS
 // ================================
 
-// Default pool: Cardanesia [ADI]
-const DEFAULT_POOL: Record<CardanoNetwork, { poolId: string; ticker: string; name: string }> = {
-  mainnet: {
-    poolId: "pool1nej3scqpnnl00f54dv0muc6vlkvptjjjptuzrl7j5l8t5hkz2sy",
-    ticker: "ADI",
-    name: "Cardanesia",
-  },
-  preprod: {
-    poolId: "pool1nej3scqpnnl00f54dv0muc6vlkvptjjjptuzrl7j5l8t5hkz2sy", // May differ on testnet
-    ticker: "ADI",
-    name: "Cardanesia (Preprod)",
-  },
-  preview: {
-    poolId: "pool1nej3scqpnnl00f54dv0muc6vlkvptjjjptuzrl7j5l8t5hkz2sy", // May differ on testnet
-    ticker: "ADI", 
-    name: "Cardanesia (Preview)",
-  },
-};
+// Default pool: Cardanesia [ADI] - will be searched dynamically by ticker
+const DEFAULT_POOL_TICKER = "ADI";
+const DEFAULT_POOL_NAME = "Cardanesia";
 
 /**
  * Stake pool information
@@ -1272,11 +1257,52 @@ export const searchPools = async (query: string): Promise<StakePoolInfo[]> => {
 };
 
 /**
- * Get default stake pool (Cardanesia ADI)
+ * Get default stake pool (Cardanesia ADI) - searches dynamically
  */
-export const getDefaultPool = (): { poolId: string; ticker: string; name: string } => {
+export const getDefaultPool = (): { ticker: string; name: string } => {
+  return {
+    ticker: DEFAULT_POOL_TICKER,
+    name: DEFAULT_POOL_NAME,
+  };
+};
+
+/**
+ * Search for default pool (Cardanesia ADI) by ticker
+ * Returns the pool info if found on current network
+ */
+
+export const findDefaultPool = async (): Promise<StakePoolInfo | null> => {
   const network = getCurrentNetwork();
-  return DEFAULT_POOL[network];
+  if (network === "mainnet") {
+    // Always return Cardanesia [ADI] mainnet pool
+    return {
+      poolId: "pool1pfprlfz0ywcnewjegazz05ghgcfkvu40v6edsz6yn8w362sdjr8",
+      ticker: "ADI",
+      name: "Cardanesia",
+      description: "Cardanesia Stake Pool [ADI]",
+      homepage: "https://cardanesia.com/",
+      saturation: 0,
+      pledge: "0",
+      margin: 0,
+      fixedCost: "340000000",
+      activeStake: "0",
+      liveStake: "0",
+      blocksEpoch: 0,
+      blocksMinted: 0,
+      ros: 0,
+      delegators: 0,
+    };
+  } else {
+    try {
+      const pools = await searchPools(DEFAULT_POOL_TICKER);
+      // Find exact ticker match
+      const exactMatch = pools.find(p => p.ticker.toUpperCase() === DEFAULT_POOL_TICKER);
+      return exactMatch || pools[0] || null;
+    } catch (error) {
+      console.error("Error finding default pool:", error);
+      return null;
+    }
+  }
 };
 
 /**
