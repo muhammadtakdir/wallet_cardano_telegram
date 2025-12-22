@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.3.9] - 2024-12-22 - Multi-Asset Sending 📦
+
+### Added
+- **Multi-Asset Transactions**: Send ADA and native assets together in one transaction
+  - Send ADA + multiple tokens/NFTs in a single transaction
+  - "Add Asset" button to include additional assets
+  - Remove individual assets from the send list
+  - Support for fungible tokens and NFTs
+  - Auto minimum ADA calculation for native assets (~1.5 ADA per asset)
+
+- **Improved Send Screen UI**:
+  - Step-based flow: Input → Add Asset → Confirm → PIN → Sending → Success
+  - Visual asset type indicators (ADA, Token, NFT)
+  - Asset balance display for each selected asset
+  - MAX button to set maximum amount
+  - NFTs automatically set to quantity 1
+
+- **Backend Functions**:
+  - `sendMultiAssetTransaction()` - Build and submit multi-asset transactions
+  - `MultiAssetOutput` interface for typed asset outputs
+  - MeshTxBuilder integration for complex transactions
+
+### Changed
+- `SendScreen.tsx` - Complete rewrite with multi-asset support
+  - Asset selection list with "Add Asset" functionality
+  - Support for ADA Handle + multi-asset together
+  - Improved confirmation screen with all assets listed
+
+- `wallet.ts` - Added multi-asset transaction builder
+  - Automatic UTxO selection for multi-asset sends
+  - Fee estimation for complex transactions
+
+### Technical
+- Uses MeshTxBuilder for constructing multi-output transactions
+- Native asset quantity passed as string for large number support
+- Minimum ADA for native assets calculated automatically
+
+---
+
 ## [0.3.8] - 2024-12-22 - ADA Handle Support & Collateral Management 🎯
 
 ### Added

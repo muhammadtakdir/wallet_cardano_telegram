@@ -810,6 +810,117 @@ export const sendAssetTransaction = async (
 };
 
 /**
+ * Multi-asset transaction output
+ */
+export interface MultiAssetOutput {
+  unit: string;       // "lovelace" for ADA, or policyId+assetName for native assets
+  quantity: string;   // Amount to send
+}
+
+/**
+ * Send multiple assets in a single transaction
+ * Supports ADA + multiple native assets together
+ * 
+ * @param wallet - MeshWallet instance
+ * @param recipientAddress - Recipient's Cardano address
+ * @param outputs - Array of assets to send
+ * @returns Transaction result with hash or error
+ */
+export const sendMultiAssetTransaction = async (
+  wallet: MeshWallet,
+  recipientAddress: string,
+  outputs: MultiAssetOutput[]
+): Promise<SendTransactionResult> => {
+  try {
+    if (!outputs || outputs.length === 0) {
+      return { success: false, error: "No assets specified to send" };
+    }
+
+    // Create provider for transaction builder
+    const provider = createBlockfrostProvider();
+
+    // Get UTxOs and change address from wallet
+    const utxos = await wallet.getUtxos();
+    const changeAddress = await wallet.getChangeAddress();
+
+    if (!utxos || utxos.length === 0) {
+      return { success: false, error: "No UTxOs available in wallet" };
+    }
+
+    // Build the transaction using MeshTxBuilder
+    const txBuilder = new MeshTxBuilder({
+      fetcher: provider,
+      submitter: provider,
+      verbose: false,
+    });
+
+    // Separate lovelace from native assets
+    let lovelaceAmount = BigInt(0);
+    const nativeAssets: MultiAssetOutput[] = [];
+    
+    for (const output of outputs) {
+      if (output.unit === "lovelace") {
+        lovelaceAmount += BigInt(output.quantity);
+      } else {
+        nativeAssets.push(output);
+      }
+    }
+
+    // Build the output amounts
+    const txOutAmounts: { unit: string; quantity: string }[] = [];
+    
+    // Always include lovelace (for native assets, minimum ~1.5 ADA is required)
+    if (nativeAssets.length > 0) {
+      // If sending native assets, ensure minimum ADA for UTxO
+      const minLovelace = BigInt(1500000) * BigInt(Math.max(1, nativeAssets.length)); // ~1.5 ADA per asset
+      if (lovelaceAmount < minLovelace) {
+        lovelaceAmount = minLovelace;
+      }
+    }
+    
+    if (lovelaceAmount > BigInt(0)) {
+      txOutAmounts.push({ unit: "lovelace", quantity: lovelaceAmount.toString() });
+    }
+    
+    // Add native assets
+    for (const asset of nativeAssets) {
+      txOutAmounts.push({ unit: asset.unit, quantity: asset.quantity });
+    }
+
+    // Build transaction
+    const unsignedTx = await txBuilder
+      .txOut(recipientAddress, txOutAmounts)
+      .changeAddress(changeAddress)
+      .selectUtxosFrom(utxos)
+      .complete();
+
+    // Sign the transaction
+    const signedTx = await wallet.signTx(unsignedTx);
+
+    // Submit the transaction
+    const txHash = await wallet.submitTx(signedTx);
+
+    return {
+      success: true,
+      txHash,
+    };
+  } catch (error) {
+    console.error("Error sending multi-asset transaction:", error);
+    const message = error instanceof Error ? error.message : String(error);
+    
+    // Parse common errors
+    if (message.includes("INPUTS_EXHAUSTED") || message.includes("insufficient")) {
+      return { success: false, error: "Insufficient funds for this transaction" };
+    }
+    if (message.includes("MIN_UTXO")) {
+      return { success: false, error: "Amount below minimum UTxO requirement. Try adding more ADA." };
+    }
+    
+    return { success: false, error: message || "Multi-asset transfer failed" };
+  }
+};
+
+/**
  * Estimate transaction fee
  * 
  * @param wallet - MeshWallet instance
