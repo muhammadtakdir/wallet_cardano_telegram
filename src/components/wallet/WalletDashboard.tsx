@@ -32,6 +32,21 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
     lockWallet,
   } = useWalletStore();
 
+  // Debug logging
+  React.useEffect(() => {
+    console.log("=== WalletDashboard Debug ===");
+    console.log("walletAddress:", walletAddress, typeof walletAddress);
+    console.log("walletName:", walletName, typeof walletName);
+    console.log("balance:", balance);
+    console.log("balance?.ada:", balance?.ada, typeof balance?.ada);
+    console.log("balance?.lovelace:", balance?.lovelace, typeof balance?.lovelace);
+    console.log("transactions:", transactions);
+    console.log("network:", network, typeof network);
+    console.log("isLoading:", isLoading);
+    console.log("wallets:", wallets);
+    console.log("=== End Debug ===");
+  }, [walletAddress, walletName, balance, transactions, network, isLoading, wallets]);
+
   const { isInTelegram, hapticFeedback, showAlert } = useTelegram();
 
   const [isRefreshing, setIsRefreshing] = React.useState(false);

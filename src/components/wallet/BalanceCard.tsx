@@ -23,6 +23,18 @@ export const BalanceCard: React.FC<BalanceCardProps> = ({
 }) => {
   const [copied, setCopied] = React.useState(false);
 
+  // Debug logging
+  React.useEffect(() => {
+    console.log("=== BalanceCard Debug ===");
+    console.log("balance:", balance);
+    console.log("balance?.ada:", balance?.ada, typeof balance?.ada);
+    console.log("balance?.lovelace:", balance?.lovelace, typeof balance?.lovelace);
+    console.log("balance?.assets:", balance?.assets);
+    console.log("address:", address, typeof address);
+    console.log("network:", network, typeof network);
+    console.log("=== End BalanceCard Debug ===");
+  }, [balance, address, network]);
+
   const handleCopyAddress = async () => {
     if (address) {
       await navigator.clipboard.writeText(address);

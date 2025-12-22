@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Script from "next/script";
 import { Providers } from "@/components/providers";
+import ErrorBoundary from "@/components/ErrorBoundary";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -54,7 +55,9 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen bg-gray-50 dark:bg-gray-900`}
       >
-        <Providers>{children}</Providers>
+        <ErrorBoundary>
+          <Providers>{children}</Providers>
+        </ErrorBoundary>
       </body>
     </html>
   );
