@@ -3,6 +3,7 @@
 import * as React from "react";
 import { useWalletStore, useTelegram } from "@/hooks";
 import { hasStoredWallet, getWalletsList } from "@/lib/storage";
+import { isLockedOut, getLockoutRemaining } from "@/lib/storage/encryption";
 import { WalletDashboard, MnemonicDisplay } from "@/components/wallet";
 import { Card, Button, PinInput, Input } from "@/components/ui";
 
@@ -399,6 +400,9 @@ export default function WalletPage() {
 
   // Render unlock screen
   if (view === "unlock") {
+    const locked = isLockedOut();
+    const lockoutSeconds = getLockoutRemaining();
+    
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-gray-50 dark:bg-gray-900">
         <WalletLogo className="w-16 h-16 mb-6 text-blue-600" />
@@ -411,18 +415,34 @@ export default function WalletPage() {
         </p>
 
         <Card padding="lg" className="w-full max-w-sm">
-          <PinInput
-            value={pin}
-            onChange={setPin}
-            onComplete={handleUnlock}
-            error={pinError}
-            autoFocus
-          />
-
-          {isLoading && (
-            <div className="mt-4 text-center text-gray-500">
-              Unlocking...
+          {locked ? (
+            <div className="text-center py-4">
+              <div className="text-red-500 mb-2">
+                <svg className="w-12 h-12 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+              </div>
+              <p className="text-red-500 font-medium">Too many failed attempts</p>
+              <p className="text-gray-500 text-sm mt-1">
+                Try again in {Math.ceil(lockoutSeconds / 60)} minute{lockoutSeconds > 60 ? 's' : ''}
+              </p>
             </div>
+          ) : (
+            <>
+              <PinInput
+                value={pin}
+                onChange={setPin}
+                onComplete={handleUnlock}
+                error={pinError}
+                autoFocus
+              />
+
+              {isLoading && (
+                <div className="mt-4 text-center text-gray-500">
+                  Unlocking...
+                </div>
+              )}
+            </>
           )}
         </Card>
 

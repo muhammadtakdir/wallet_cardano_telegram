@@ -14,9 +14,9 @@ export interface MnemonicDisplayProps {
 export const MnemonicDisplay: React.FC<MnemonicDisplayProps> = ({
   mnemonic,
   onConfirmed,
-  showCopyButton = true,
+  showCopyButton = false, // Disabled by default for security - clipboard can be intercepted
   title = "Your Recovery Phrase",
-  warning = "Write down these words in order and keep them safe. Anyone with this phrase can access your funds.",
+  warning = "Write down these words in order and keep them safe. Anyone with this phrase can access your funds. NEVER share this with anyone!",
 }) => {
   const [copied, setCopied] = React.useState(false);
   const [confirmed, setConfirmed] = React.useState(false);

@@ -23,6 +23,9 @@ import {
   hasPinSet,
   renameWallet,
   getWalletInfo,
+  isLockedOut,
+  getLockoutRemaining,
+  validatePinStrength,
 } from "@/lib/storage/encryption";
 import {
   hasStoredWallet,
@@ -107,6 +110,12 @@ export const useWalletStore = create<WalletState>()(
         set({ isLoading: true, error: null });
 
         try {
+          // Validate PIN strength
+          const pinValidation = validatePinStrength(pin);
+          if (!pinValidation.valid) {
+            throw new Error(pinValidation.error || "Invalid PIN");
+          }
+
           // Generate new mnemonic
           const mnemonic = generateMnemonic(wordCount);
 
@@ -158,6 +167,12 @@ export const useWalletStore = create<WalletState>()(
         set({ isLoading: true, error: null });
 
         try {
+          // Validate PIN strength
+          const pinValidation = validatePinStrength(pin);
+          if (!pinValidation.valid) {
+            throw new Error(pinValidation.error || "Invalid PIN");
+          }
+
           // Normalize and validate mnemonic
           const normalizedMnemonic = normalizeMnemonic(mnemonic);
           if (!validateMnemonic(normalizedMnemonic)) {
@@ -214,6 +229,12 @@ export const useWalletStore = create<WalletState>()(
         set({ isLoading: true, error: null });
 
         try {
+          // Check for lockout due to too many failed attempts
+          if (isLockedOut()) {
+            const remaining = getLockoutRemaining();
+            throw new Error(`Too many failed attempts. Try again in ${remaining} seconds.`);
+          }
+
           // Get wallet ID (use provided or active)
           const id = walletId || getActiveWalletId();
           if (!id) {
@@ -226,7 +247,12 @@ export const useWalletStore = create<WalletState>()(
           // Decrypt mnemonic from storage
           const mnemonic = decryptWallet(pin, id);
           if (!mnemonic) {
-            throw new Error("Invalid PIN or wallet data corrupted");
+            // Check if now locked out after this attempt
+            if (isLockedOut()) {
+              const remaining = getLockoutRemaining();
+              throw new Error(`Too many failed attempts. Try again in ${remaining} seconds.`);
+            }
+            throw new Error("Invalid PIN");
           }
 
           // Create wallet instance
@@ -269,9 +295,18 @@ export const useWalletStore = create<WalletState>()(
        * Lock wallet (clear sensitive data from memory)
        */
       lockWallet: () => {
+        // Get current wallet instance and null it properly
+        const currentInstance = get()._walletInstance;
+        if (currentInstance) {
+          // Clear any cached data in wallet instance
+          // MeshWallet doesn't expose internal state, but setting to null helps GC
+        }
+        
         set({
           isLoggedIn: false,
           _walletInstance: null,
+          balance: null, // Clear balance for privacy
+          transactions: [], // Clear transactions for privacy
           // Keep wallets list and active wallet ID for quick unlock
         });
       },

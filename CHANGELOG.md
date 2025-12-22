@@ -5,6 +5,51 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2024-12-22
+
+### Security
+
+#### Brute Force Protection
+- Maximum 5 PIN attempts before 5-minute lockout
+- Lockout timer displayed on unlock screen
+- Failed attempts counter persisted in localStorage
+- Auto-reset on successful unlock
+
+#### Timing Attack Prevention
+- Implemented timing-safe string comparison (`secureCompare`)
+- Prevents attackers from guessing PIN via response time analysis
+
+#### PIN Strength Validation
+- Minimum 6 characters required
+- Maximum 20 characters allowed
+- Blocks common weak PINs (all same digit like "111111")
+- Blocks sequential patterns (123456, 654321, etc.)
+
+#### Mnemonic Security Improvements
+- Disabled clipboard copy by default (prevent clipboard hijacking in Telegram)
+- Added mnemonic format validation after decryption
+- Enhanced warning message about never sharing recovery phrase
+- Clear balance and transactions on wallet lock for privacy
+
+#### Memory Security
+- Clear wallet instance properly on lock
+- Clear balance and transaction data when logging out
+- Mnemonic never persisted in Zustand store
+
+### Added
+- `isLockedOut()` - Check if user is locked out
+- `getLockoutRemaining()` - Get seconds remaining in lockout
+- `validatePinStrength()` - Validate PIN meets security requirements
+- `secureCompare()` - Timing-safe string comparison
+- Lockout UI in unlock screen with countdown
+
+### Changed
+- `decryptWallet()` now validates mnemonic word count after decryption
+- `lockWallet()` clears more sensitive data (balance, transactions)
+- MnemonicDisplay `showCopyButton` default changed to `false`
+
+---
+
 ## [0.2.0] - 2024-12-22
 
 ### Added

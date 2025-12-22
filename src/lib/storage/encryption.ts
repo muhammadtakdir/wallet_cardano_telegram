@@ -13,6 +13,108 @@ import {
 } from "./index";
 
 /**
+ * Security constants for brute force protection
+ */
+const SECURITY_CONFIG = {
+  MAX_PIN_ATTEMPTS: 5,
+  LOCKOUT_DURATION_MS: 5 * 60 * 1000, // 5 minutes
+  MIN_PIN_LENGTH: 6,
+  MAX_PIN_LENGTH: 20,
+};
+
+/**
+ * Storage keys for security tracking
+ */
+const SECURITY_KEYS = {
+  PIN_ATTEMPTS: "cardano_pin_attempts",
+  LOCKOUT_UNTIL: "cardano_lockout_until",
+};
+
+/**
+ * Timing-safe string comparison to prevent timing attacks
+ */
+const secureCompare = (a: string, b: string): boolean => {
+  if (a.length !== b.length) {
+    // Still do comparison to maintain constant time
+    let result = 1;
+    for (let i = 0; i < a.length; i++) {
+      result |= a.charCodeAt(i) ^ (b.charCodeAt(i % b.length) || 0);
+    }
+    return false;
+  }
+  let result = 0;
+  for (let i = 0; i < a.length; i++) {
+    result |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return result === 0;
+};
+
+/**
+ * Check if user is locked out due to too many PIN attempts
+ */
+export const isLockedOut = (): boolean => {
+  const lockoutUntil = getStorageItem(SECURITY_KEYS.LOCKOUT_UNTIL);
+  if (!lockoutUntil) return false;
+  return Date.now() < parseInt(lockoutUntil, 10);
+};
+
+/**
+ * Get remaining lockout time in seconds
+ */
+export const getLockoutRemaining = (): number => {
+  const lockoutUntil = getStorageItem(SECURITY_KEYS.LOCKOUT_UNTIL);
+  if (!lockoutUntil) return 0;
+  const remaining = parseInt(lockoutUntil, 10) - Date.now();
+  return Math.max(0, Math.ceil(remaining / 1000));
+};
+
+/**
+ * Record a failed PIN attempt
+ */
+const recordFailedAttempt = (): number => {
+  const attempts = parseInt(getStorageItem(SECURITY_KEYS.PIN_ATTEMPTS) || "0", 10) + 1;
+  setStorageItem(SECURITY_KEYS.PIN_ATTEMPTS, attempts.toString());
+  
+  if (attempts >= SECURITY_CONFIG.MAX_PIN_ATTEMPTS) {
+    const lockoutUntil = Date.now() + SECURITY_CONFIG.LOCKOUT_DURATION_MS;
+    setStorageItem(SECURITY_KEYS.LOCKOUT_UNTIL, lockoutUntil.toString());
+  }
+  
+  return SECURITY_CONFIG.MAX_PIN_ATTEMPTS - attempts;
+};
+
+/**
+ * Reset PIN attempts after successful unlock
+ */
+const resetPinAttempts = (): void => {
+  removeStorageItem(SECURITY_KEYS.PIN_ATTEMPTS);
+  removeStorageItem(SECURITY_KEYS.LOCKOUT_UNTIL);
+};
+
+/**
+ * Validate PIN strength
+ */
+export const validatePinStrength = (pin: string): { valid: boolean; error?: string } => {
+  if (!pin || typeof pin !== "string") {
+    return { valid: false, error: "PIN is required" };
+  }
+  if (pin.length < SECURITY_CONFIG.MIN_PIN_LENGTH) {
+    return { valid: false, error: `PIN must be at least ${SECURITY_CONFIG.MIN_PIN_LENGTH} characters` };
+  }
+  if (pin.length > SECURITY_CONFIG.MAX_PIN_LENGTH) {
+    return { valid: false, error: `PIN must be at most ${SECURITY_CONFIG.MAX_PIN_LENGTH} characters` };
+  }
+  // Check for sequential or repeated patterns (weak PINs)
+  if (/^(\d)\1+$/.test(pin)) {
+    return { valid: false, error: "PIN cannot be all the same digit" };
+  }
+  if (/^(012345|123456|234567|345678|456789|567890|098765|987654|876543|765432|654321|543210)$/.test(pin)) {
+    return { valid: false, error: "PIN cannot be a sequential pattern" };
+  }
+  return { valid: true };
+};
+
+/**
  * Encrypted wallet data structure
  */
 export interface EncryptedWalletData {
@@ -77,16 +179,20 @@ export const hashPin = (pin: string): string => {
 };
 
 /**
- * Verify PIN against stored hash
+ * Verify PIN against stored hash with timing-safe comparison
  */
 export const verifyPin = (pin: string, storedHash: string): boolean => {
   try {
     const [salt, hash] = storedHash.split(":");
+    if (!salt || !hash) return false;
+    
     const computedHash = CryptoJS.PBKDF2(pin, salt, {
       keySize: 256 / 32,
       iterations: 10000,
     }).toString();
-    return computedHash === hash;
+    
+    // Use timing-safe comparison to prevent timing attacks
+    return secureCompare(computedHash, hash);
   } catch {
     return false;
   }
@@ -175,10 +281,17 @@ export const encryptAndSaveWallet = (
  * 
  * @param pin - User's PIN for decryption
  * @param walletId - The wallet ID to decrypt (uses active wallet if not provided)
- * @returns The decrypted mnemonic or null if failed
+ * @returns The decrypted mnemonic or null if failed, or "LOCKED" if too many attempts
  */
 export const decryptWallet = (pin: string, walletId?: string): string | null => {
   try {
+    // Check for lockout first
+    if (isLockedOut()) {
+      const remaining = getLockoutRemaining();
+      console.error(`Account locked. Try again in ${remaining} seconds.`);
+      return null;
+    }
+
     // Get wallet ID
     const id = walletId || getActiveWalletId();
     if (!id) {
@@ -197,9 +310,10 @@ export const decryptWallet = (pin: string, walletId?: string): string | null => 
     // Parse encrypted data
     const encryptedData: EncryptedWalletData = JSON.parse(storedData);
 
-    // Verify PIN first
+    // Verify PIN first with brute force protection
     if (encryptedData.pinHash && !verifyPin(pin, encryptedData.pinHash)) {
-      console.error("Invalid PIN");
+      const attemptsLeft = recordFailedAttempt();
+      console.error(`Invalid PIN. ${attemptsLeft} attempts remaining.`);
       return null;
     }
 
@@ -223,8 +337,19 @@ export const decryptWallet = (pin: string, walletId?: string): string | null => 
     // Validate decryption worked (mnemonic should not be empty)
     if (!mnemonic || mnemonic.trim().length === 0) {
       console.error("Decryption resulted in empty mnemonic - wrong PIN?");
+      recordFailedAttempt();
       return null;
     }
+
+    // Validate mnemonic format (basic check: should have valid word count)
+    const wordCount = mnemonic.trim().split(/\s+/).length;
+    if (![12, 15, 18, 21, 24].includes(wordCount)) {
+      console.error("Decrypted data is not a valid mnemonic");
+      return null;
+    }
+
+    // Reset failed attempts on successful unlock
+    resetPinAttempts();
 
     return mnemonic;
   } catch (error) {
