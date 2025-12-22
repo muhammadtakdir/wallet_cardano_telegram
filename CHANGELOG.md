@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.3.4] - 2024-12-22 - Balance Privacy & Currency Conversion 💱
+
+### Added
+- **Hide Balance Toggle**: Privacy feature to hide wallet balance
+  - Eye icon button next to "Total Balance" label
+  - Click to toggle between visible and hidden (••••••) state
+  - Also hides native asset quantities when enabled
+  - Preference saved to localStorage
+
+- **Fiat Currency Display**: Show ADA value in local currency
+  - Real-time ADA price from CoinGecko API
+  - Price updates every 60 seconds with caching
+  - Displays below ADA balance with approximate value
+
+- **Currency Selector Modal**: Choose preferred display currency
+  - 🇺🇸 USD - US Dollar
+  - 🇪🇺 EUR - Euro  
+  - 🇯🇵 JPY - Japanese Yen
+  - 🇮🇩 IDR - Indonesian Rupiah
+  - 🇨🇳 CNY - Chinese Yuan
+  - 🇪🇹 ETB - Ethiopian Birr
+  - Click on fiat value to open currency selector
+  - Currency preference saved to localStorage
+
+### New Files
+- `src/lib/currency/index.ts` - Currency conversion utilities
+  - `fetchAdaPrice()` - Fetch ADA price from CoinGecko
+  - `convertAdaToFiat()` - Convert ADA amount to fiat
+  - `formatFiatValue()` - Format fiat with proper decimals and symbols
+  - `getSavedCurrency()` / `saveCurrency()` - localStorage persistence
+  - `getBalanceHidden()` / `saveBalanceHidden()` - Hide balance preference
+
+- `src/components/wallet/CurrencySelector.tsx` - Modal component for currency selection
+
+### Changed
+- `BalanceCard.tsx` - Added hide toggle, fiat display, and currency selector integration
+
+---
+
 ## [0.3.3] - 2024-12-22 - Network Selection 🌐
 
 ### Added

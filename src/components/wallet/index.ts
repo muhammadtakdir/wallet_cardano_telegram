@@ -31,3 +31,6 @@ export type { QRScannerProps } from "./QRScanner";
 
 export { NetworkSelector } from "./NetworkSelector";
 export type { NetworkSelectorProps } from "./NetworkSelector";
+
+export { CurrencySelector } from "./CurrencySelector";
+export type { CurrencySelectorProps } from "./CurrencySelector";
