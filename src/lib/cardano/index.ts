@@ -6,3 +6,4 @@ export * from "./mnemonic";
 
 // Wallet operations
 export * from "./wallet";
+export * from "./mesh-stake";

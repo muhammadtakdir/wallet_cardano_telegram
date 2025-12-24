@@ -1,6 +1,7 @@
 "use client";
 
 import { BlockfrostProvider, MeshWallet, MeshTxBuilder } from "@meshsdk/core";
+import { delegateToPoolLucid } from './lucid-stake';
 import {
   getBlockfrostApiKey,
   getBlockfrostUrl,
@@ -337,6 +338,14 @@ export const createWalletFromMnemonic = async (
         words: mnemonic.split(" "),
       },
     });
+
+    // Attach mnemonic to instance for backward compatibility with CSL-based flows
+    try {
+      (wallet as any)._mnemonic = mnemonic;
+      (wallet as any).mnemonic = mnemonic;
+    } catch (e) {
+      // ignore
+    }
 
     // Get the first address (these methods return promises in newer MeshJS versions)
     let address: string = "";
@@ -1340,87 +1349,41 @@ export const getRewardHistory = async (stakeAddress: string, count: number = 5):
  */
 export const delegateToPool = async (
   wallet: MeshWallet,
-  poolId: string
+  poolId: string,
+  network: CardanoNetwork
 ): Promise<{ success: boolean; txHash?: string; error?: string }> => {
   try {
-    const provider = createBlockfrostProvider();
-    const utxos = await wallet.getUtxos();
-    const changeAddress = await wallet.getChangeAddress();
-    const rewardAddresses = await wallet.getRewardAddresses();
-
-    if (!utxos || utxos.length === 0) {
-      return { success: false, error: "No UTxOs available in wallet" };
+    // Prefer MeshTxBuilder-based delegation when possible
+    try {
+      const { delegateToPoolMesh } = await import('./mesh-stake');
+      const meshResult = await delegateToPoolMesh(wallet, poolId, network);
+      if (meshResult && meshResult.success) return meshResult;
+      // If mesh result failed but returned an error, log and fall back
+      console.warn('Mesh delegation failed, falling back to CSL:', meshResult.error);
+    } catch (meshErr) {
+      console.warn('Mesh delegation not available or failed:', meshErr);
     }
 
-    if (!rewardAddresses || rewardAddresses.length === 0) {
-      return { success: false, error: "Could not get reward address" };
+    // If configured to use Mesh-only staking, do not fallback
+    const meshOnly = process.env.NEXT_PUBLIC_MESH_ONLY === 'true' || process.env.MESH_ONLY === 'true';
+    if (meshOnly) {
+      return { success: false, error: 'Mesh delegation failed and fallback is disabled (MESH_ONLY=true)' };
     }
 
-    const rewardAddress = rewardAddresses[0];
-
-    // Validasi: reward address harus milik wallet (dari mnemonic yang sama)
-    // Cek apakah reward address ada di antara address wallet
-    const usedAddresses = await wallet.getUsedAddresses();
-    const unusedAddresses = await wallet.getUnusedAddresses();
-    const allAddresses = [...(usedAddresses || []), ...(unusedAddresses || [])];
-    const isRewardAddressRelated = allAddresses.some(addr => typeof addr === 'string' && rewardAddress.includes(addr.slice(0, 20)));
-    if (!isRewardAddressRelated) {
-      return { success: false, error: `Reward address is not related to wallet. Debug: rewardAddress=${rewardAddress}, walletAddresses=${allAddresses.join(',')}` };
+    // Fallback to CSL-based delegation which uses mnemonic
+    let mnemonic = (wallet as any)._mnemonic || (wallet as any).mnemonic;
+    if (!mnemonic) {
+      return { success: false, error: 'Mnemonic not found in wallet instance. CSL staking requires mnemonic.' };
     }
-
-    // Build delegation transaction
-    const txBuilder = new MeshTxBuilder({
-      fetcher: provider,
-      submitter: provider,
-      verbose: true, // Aktifkan verbose untuk debug
+    const blockfrostKey = getBlockfrostApiKey();
+    return await (await import('./csl-stake')).delegateToPoolCSL({
+      mnemonic,
+      poolId,
+      blockfrostKey,
+      network,
     });
-
-    // Check if stake address is already registered
-    const stakeInfo = await getStakingInfo(rewardAddress);
-
-    let unsignedTx: string;
-
-    if (!stakeInfo || !stakeInfo.active) {
-      // Need to register stake address first (2 ADA deposit) then delegate
-      unsignedTx = await txBuilder
-        .registerStakeCertificate(rewardAddress)
-        .delegateStakeCertificate(rewardAddress, poolId)
-        .changeAddress(changeAddress)
-        .selectUtxosFrom(utxos)
-        .complete();
-    } else {
-      // Already registered, just delegate
-      unsignedTx = await txBuilder
-        .delegateStakeCertificate(rewardAddress, poolId)
-        .changeAddress(changeAddress)
-        .selectUtxosFrom(utxos)
-        .complete();
-    }
-
-    // Sign the transaction
-    let signedTx;
-    try {
-      signedTx = await wallet.signTx(unsignedTx);
-    } catch (signErr) {
-      return { success: false, error: `Failed to sign staking tx: ${signErr instanceof Error ? signErr.message : signErr}` };
-    }
-
-    // Submit the transaction
-    let txHash;
-    try {
-      txHash = await wallet.submitTx(signedTx);
-    } catch (submitErr) {
-      return { success: false, error: `Failed to submit staking tx: ${submitErr instanceof Error ? submitErr.message : submitErr}` };
-    }
-
-    return { success: true, txHash };
   } catch (error) {
-    console.error("Error delegating to pool:", error);
-    const message = error instanceof Error ? error.message : String(error);
-    if (message.includes("INPUTS_EXHAUSTED") || message.includes("insufficient")) {
-      return { success: false, error: "Insufficient funds. Need ~2.2 ADA for first delegation." };
-    }
-    return { success: false, error: message || "Delegation failed" };
+    return { success: false, error: error instanceof Error ? error.message : String(error) };
   }
 };
 
@@ -1460,19 +1423,30 @@ export const withdrawRewards = async (
       verbose: false,
     });
 
-    const unsignedTx = await txBuilder
-      .withdrawal(rewardAddress, stakingInfo.availableRewards)
-      .changeAddress(changeAddress)
-      .selectUtxosFrom(utxos)
-      .complete();
+    let unsignedTx: any;
+    try {
+      unsignedTx = await txBuilder
+        .withdrawal(rewardAddress, stakingInfo.availableRewards)
+        .changeAddress(changeAddress)
+        .selectUtxosFrom(utxos)
+        .complete();
+    } catch (err) {
+      console.error('Error building withdrawal transaction:', err);
+      return { success: false, error: 'Error building withdrawal transaction: ' + (err instanceof Error ? err.message : String(err)), stack: err instanceof Error ? err.stack : undefined };
+    }
 
-    // Sign the transaction
-    const signedTx = await wallet.signTx(unsignedTx);
+    try {
+      // Sign the transaction
+      const signedTx = await wallet.signTx(unsignedTx);
 
-    // Submit the transaction
-    const txHash = await wallet.submitTx(signedTx);
+      // Submit the transaction
+      const txHash = await wallet.submitTx(signedTx);
 
-    return { success: true, txHash };
+      return { success: true, txHash };
+    } catch (err) {
+      console.error('Error signing/submitting withdrawal transaction:', err);
+      return { success: false, error: 'Error signing/submitting withdrawal transaction: ' + (err instanceof Error ? err.message : String(err)) };
+    }
   } catch (error) {
     console.error("Error withdrawing rewards:", error);
     const message = error instanceof Error ? error.message : String(error);

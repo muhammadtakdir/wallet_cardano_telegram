@@ -58,6 +58,8 @@ export interface WalletState {
 
   // Internal wallet instance (not persisted)
   _walletInstance: MeshWallet | null;
+  // Mnemonic in memory (not persisted)
+  _mnemonic?: string;
 
   // Actions
   createNewWallet: (pin: string, name?: string, wordCount?: 12 | 15 | 18 | 21 | 24) => Promise<string>;
@@ -69,11 +71,9 @@ export interface WalletState {
   deleteAllWallets: () => void;
   renameWallet: (walletId: string, newName: string) => boolean;
   changeNetwork: (network: CardanoNetwork) => void;
-  refreshBalance: () => Promise<void>;
-  refreshTransactions: () => Promise<void>;
-  refreshWalletsList: () => void;
-  setError: (error: string | null) => void;
-  clearError: () => void;
+    refreshBalance: () => Promise<void>;
+    setError: (error: string | null) => void;
+    clearError: () => void;
   hasStoredWallet: () => boolean;
   getWalletCount: () => number;
 }
@@ -123,6 +123,10 @@ export const useWalletStore = create<WalletState>()(
 
           // Create wallet instance
           const { wallet, address, network } = await createWalletFromMnemonic(mnemonic);
+          // Inject mnemonic ke wallet instance untuk CSL staking
+          (wallet as any)._mnemonic = mnemonic;
+          // Inject mnemonic ke wallet instance untuk CSL staking
+          (wallet as any)._mnemonic = mnemonic;
 
           // Get wallet count for default name
           const existingWallets = getWalletsList();
@@ -161,6 +165,7 @@ export const useWalletStore = create<WalletState>()(
             balance,
             network,
             _walletInstance: wallet,
+            _mnemonic: mnemonic,
           });
 
           // Return mnemonic for user to backup
@@ -194,6 +199,8 @@ export const useWalletStore = create<WalletState>()(
 
           // Create wallet instance
           const { wallet, address, network } = await createWalletFromMnemonic(normalizedMnemonic);
+          // Inject mnemonic ke wallet instance untuk CSL staking
+          (wallet as any)._mnemonic = normalizedMnemonic;
 
           // Get wallet count for default name
           const existingWallets = getWalletsList();
@@ -241,6 +248,7 @@ export const useWalletStore = create<WalletState>()(
             transactions,
             network,
             _walletInstance: wallet,
+            _mnemonic: normalizedMnemonic,
           });
 
           return true;
@@ -286,6 +294,8 @@ export const useWalletStore = create<WalletState>()(
 
           // Create wallet instance
           const { wallet, address, network } = await createWalletFromMnemonic(mnemonic);
+          // Inject mnemonic ke wallet instance untuk CSL staking
+          (wallet as any)._mnemonic = mnemonic;
 
           // Get wallet info
           const walletInfo = getWalletInfo(id);
@@ -304,6 +314,9 @@ export const useWalletStore = create<WalletState>()(
           let transactions: TransactionInfo[] = [];
 
           // Try to get balance (non-blocking - wallet still unlocks if this fails)
+
+          // Always set _mnemonic in state for CSL staking
+          set({ _walletInstance: wallet, _mnemonic: mnemonic });
           try {
             balance = await getWalletBalance(wallet);
           } catch (balanceError) {
@@ -328,6 +341,7 @@ export const useWalletStore = create<WalletState>()(
             transactions,
             network,
             _walletInstance: wallet,
+            _mnemonic: mnemonic,
           });
 
           return true;
@@ -592,8 +606,6 @@ export const useWalletActions = () => {
       deleteAllWallets: state.deleteAllWallets,
       renameWallet: state.renameWallet,
       refreshBalance: state.refreshBalance,
-      refreshTransactions: state.refreshTransactions,
-      refreshWalletsList: state.refreshWalletsList,
     }))
   );
 };

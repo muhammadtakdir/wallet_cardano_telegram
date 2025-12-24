@@ -207,7 +207,7 @@ export const StakingScreen: React.FC<StakingScreenProps> = ({ onBack }) => {
       let result: { success: boolean; txHash?: string; error?: string };
 
       if (action === "delegate" && selectedPool) {
-        result = await delegateToPool(walletInstance, selectedPool.poolId);
+        result = await delegateToPool(walletInstance, selectedPool.poolId, network);
       } else if (action === "withdraw") {
         result = await withdrawRewards(walletInstance);
       } else {

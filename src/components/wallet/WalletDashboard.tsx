@@ -34,7 +34,6 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
     isLoading,
     wallets,
     refreshBalance,
-    refreshTransactions,
     lockWallet,
     changeNetwork,
   } = useWalletStore();
@@ -76,7 +75,7 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
   const handleRefresh = async () => {
     setIsRefreshing(true);
     try {
-      await Promise.all([refreshBalance(), refreshTransactions()]);
+      await refreshBalance();
       if (isInTelegram) {
         hapticFeedback.notificationOccurred("success");
       }

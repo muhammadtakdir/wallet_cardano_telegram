@@ -24,7 +24,7 @@ export const WalletSelector: React.FC<WalletSelectorProps> = ({
   onAddWallet,
 }) => {
   const { wallets, activeWalletId, walletName } = useWalletData();
-  const { switchWallet, deleteWallet, renameWallet, refreshWalletsList } = useWalletActions();
+  const { switchWallet, deleteWallet, renameWallet } = useWalletActions();
   const isLoading = useWalletStore((s) => s.isLoading);
   const error = useWalletStore((s) => s.error);
   const clearError = useWalletStore((s) => s.clearError);
@@ -38,11 +38,6 @@ export const WalletSelector: React.FC<WalletSelectorProps> = ({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
 
   // Load wallets on open
-  useEffect(() => {
-    if (isOpen) {
-      refreshWalletsList();
-    }
-  }, [isOpen, refreshWalletsList]);
 
   // Reset states on close
   useEffect(() => {
@@ -96,7 +91,6 @@ export const WalletSelector: React.FC<WalletSelectorProps> = ({
   const handleDelete = (walletId: string) => {
     deleteWallet(walletId);
     setShowDeleteConfirm(null);
-    refreshWalletsList();
   };
 
   const formatAddress = (address: string) => {
