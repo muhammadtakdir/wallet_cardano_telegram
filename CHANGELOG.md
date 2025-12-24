@@ -56,22 +56,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Pool detail step (view pool info)
   - Confirm/PIN/Processing/Success/Error flows
 
-### New Functions (wallet.ts)
-- `getCurrentEpoch()` - Get current epoch info
-- `getStakeAddressFromAddress()` - Extract stake address
-- `getStakingInfo()` - Get account staking status
-- `getPoolInfo()` - Get stake pool details
-- `searchPools()` - Search pools by ticker/name
-- `getDefaultPool()` - Get Cardanesia [ADI] pool info
-- `getRewardHistory()` - Get last N epochs rewards
-- `delegateToPool()` - Create delegation transaction
-- `withdrawRewards()` - Create withdrawal transaction
+### Hotfix (local E2E & Mesh staking)
+- `tests/e2e/staking.spec.ts` - Add Blockfrost mocks for `/accounts` and `/pools` to exercise Mesh flows
+- `src/app/test/e2e-stake/page.tsx` - Convert Blockfrost UTxOs to Mesh wallet UTxO format and add debug output to help E2E reliability
+- `src/lib/cardano/mesh-stake.ts` - Surface debug stack on Mesh delegation failures
+- `src/lib/cardano/wallet.ts` - Propagate Mesh debug info when Mesh delegation fails and Mesh-only is enabled
 
 ### Technical
-- Blockfrost API integration for staking queries
-- MeshTxBuilder for delegation certificates
-- Stake key registration on first delegation
-- Reward withdrawal to change address
+- Improved E2E robustness for Mesh staking (local-only tests)
+- Added debug info to Mesh delegation responses for easier local troubleshooting
 
 ---
 
