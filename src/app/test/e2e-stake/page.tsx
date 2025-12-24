@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { createWalletFromMnemonic, delegateToPool } from "@/lib/cardano";
+import { createWalletFromMnemonic, delegateToPool, getAddressUtxos } from "@/lib/cardano";
 
 export default function E2EStakePage() {
   const [result, setResult] = React.useState<any>(null);
@@ -20,8 +20,39 @@ export default function E2EStakePage() {
 
         // Create a Mesh wallet instance from mnemonic and use delegateToPool wrapper
         const instance = await createWalletFromMnemonic(mnemonic);
+
+        // Ensure the Mesh wallet has UTxOs in Mesh format (convert Blockfrost format to Mesh expected format)
+        try {
+          const bfUtxos = await getAddressUtxos(instance.address);
+          const meshUtxos = (bfUtxos || []).map((u: any) => ({
+            input: {
+              txHash: u.tx_hash || u.input?.txHash,
+              outputIndex: (u.output_index ?? u.outputIndex ?? u.input?.outputIndex ?? 0)
+            },
+            output: { address: instance.address, amount: u.amount || u.output?.amount }
+          }));
+          // Override getUtxos to return the converted format (some Mesh versions expect this shape)
+          try {
+            (instance.wallet as any).getUtxos = async () => meshUtxos;
+          } catch (e) {
+            // ignore if we cannot override
+          }
+        } catch (e) {
+          // ignore
+        }
+
         const res = await delegateToPool(instance.wallet, poolId, network as any);
-        setResult(res);
+        // Include UTox debug for E2E troubleshooting
+        let debugUtxos: any = null;
+        try {
+          if ((instance.wallet as any).getUtxos) {
+            debugUtxos = await (instance.wallet as any).getUtxos();
+          }
+        } catch (e) {
+          debugUtxos = { error: String(e) };
+        }
+
+        setResult({ result: res, debugUtxos });
       } catch (err) {
         setResult({ success: false, error: err instanceof Error ? err.message : String(err) });
       } finally {

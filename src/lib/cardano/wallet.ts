@@ -1,7 +1,6 @@
 "use client";
 
 import { BlockfrostProvider, MeshWallet, MeshTxBuilder } from "@meshsdk/core";
-import { delegateToPoolLucid } from './lucid-stake';
 import {
   getBlockfrostApiKey,
   getBlockfrostUrl,
@@ -1354,34 +1353,34 @@ export const delegateToPool = async (
 ): Promise<{ success: boolean; txHash?: string; error?: string }> => {
   try {
     // Prefer MeshTxBuilder-based delegation when possible
+    let meshResultRef: any = null;
     try {
       const { delegateToPoolMesh } = await import('./mesh-stake');
       const meshResult = await delegateToPoolMesh(wallet, poolId, network);
+      meshResultRef = meshResult;
       if (meshResult && meshResult.success) return meshResult;
-      // If mesh result failed but returned an error, log and fall back
-      console.warn('Mesh delegation failed, falling back to CSL:', meshResult.error);
+      // If mesh result failed but returned an error, log it (keep meshResult for diagnostics)
+      console.warn('Mesh delegation failed, result:', meshResult);
+      // If configured to use Mesh-only staking, do not fallback — include mesh debug info
+      const meshOnly = process.env.NEXT_PUBLIC_MESH_ONLY === 'true' || process.env.MESH_ONLY === 'true';
+      if (meshOnly) {
+        return {
+          success: false,
+          error: 'Mesh delegation failed and fallback is disabled (MESH_ONLY=true)',
+          _debug: meshResult && meshResult._debug ? meshResult._debug : { meshError: meshResult && meshResult.error ? meshResult.error : 'unknown' }
+        };
+      }
     } catch (meshErr) {
       console.warn('Mesh delegation not available or failed:', meshErr);
-    }
-
-    // If configured to use Mesh-only staking, do not fallback
-    const meshOnly = process.env.NEXT_PUBLIC_MESH_ONLY === 'true' || process.env.MESH_ONLY === 'true';
-    if (meshOnly) {
-      return { success: false, error: 'Mesh delegation failed and fallback is disabled (MESH_ONLY=true)' };
     }
 
     // Fallback to CSL-based delegation which uses mnemonic
     let mnemonic = (wallet as any)._mnemonic || (wallet as any).mnemonic;
     if (!mnemonic) {
-      return { success: false, error: 'Mnemonic not found in wallet instance. CSL staking requires mnemonic.' };
+      return { success: false, error: 'Mesh delegation failed and no mnemonic available for fallback' };
     }
-    const blockfrostKey = getBlockfrostApiKey();
-    return await (await import('./csl-stake')).delegateToPoolCSL({
-      mnemonic,
-      poolId,
-      blockfrostKey,
-      network,
-    });
+    // Note: CSL support removed in Mesh-only migration; surface explicit error (include mesh debug if available)
+    return { success: false, error: 'CSL fallback is unavailable in Mesh-only configuration', _debug: meshResultRef && meshResultRef._debug ? meshResultRef._debug : (meshResultRef ? { meshError: meshResultRef.error } : undefined) };
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : String(error) };
   }
@@ -1392,7 +1391,7 @@ export const delegateToPool = async (
  */
 export const withdrawRewards = async (
   wallet: MeshWallet
-): Promise<{ success: boolean; txHash?: string; error?: string }> => {
+): Promise<{ success: boolean; txHash?: string; error?: string; stack?: string }> => {
   try {
     const provider = createBlockfrostProvider();
     const utxos = await wallet.getUtxos();

@@ -59,6 +59,7 @@ export const delegateToPoolMesh = async (
   } catch (error) {
     console.error('Error delegating via MeshTxBuilder:', error);
     const message = error instanceof Error ? error.message : String(error);
-    return { success: false, error: message || 'Delegation failed' };
+    const stack = error instanceof Error ? error.stack : undefined;
+    return { success: false, error: message || 'Delegation failed', _debug: { stack } };
   }
 };

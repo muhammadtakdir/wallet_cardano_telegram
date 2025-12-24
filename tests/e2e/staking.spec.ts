@@ -14,10 +14,24 @@ const TEST_UTXO = [
   }
 ];
 
-test('full browser E2E: delegateToPoolCSL submits tx', async ({ page }) => {
+test('full browser E2E: delegateToPool (Mesh) submits tx', async ({ page }) => {
   // Intercept UTxO request
   await page.route('**/addresses/**/utxos', route => {
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(TEST_UTXO) });
+  });
+
+  // Intercept accounts (stake address) - return 404 (not registered yet)
+  await page.route('**/accounts/**', route => {
+    route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ error: 'not found' }) });
+  });
+
+  // Intercept pool info (optional) - return minimal pool metadata
+  await page.route('**/pools/**', route => {
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ pool_id: 'a'.repeat(56), hex: '', vrf_key: '', active_stake: '0', live_stake: '0', margin: { numerator: 0, denominator: 1 }, pledge: '0', blocks_minted: 0, reward_account: '' })
+    });
   });
 
   // Intercept tx submit
