@@ -2,13 +2,7 @@
 
 import React from "react";
 import { withdrawRewards } from "@/lib/cardano/wallet";
-import * as bip39 from 'bip39';
-import {
-  Bip32PrivateKey,
-  BaseAddress,
-  Credential,
-  RewardAddress,
-} from '@emurgo/cardano-serialization-lib-browser';
+import { createWalletFromMnemonic } from '@/lib/cardano';
 
 export default function E2EWithdrawPage() {
   const [result, setResult] = React.useState<any>(null);
@@ -18,24 +12,18 @@ export default function E2EWithdrawPage() {
     const run = async () => {
       setRunning(true);
       try {
-        // Derive a deterministic payment address from mnemonic to ensure a valid KeyHash address
+        // Create Mesh wallet instance and get addresses from it
         const mnemonic = 'test test test test test test test test test test test junk';
-        const entropy = bip39.mnemonicToEntropy(mnemonic);
-        const rootKey = Bip32PrivateKey.from_bip39_entropy(Buffer.from(entropy, 'hex'), Buffer.from(''));
-        const accountKey = rootKey.derive(1852 | 0x80000000).derive(1815 | 0x80000000).derive(0 | 0x80000000);
-        const paymentKey = accountKey.derive(0).derive(0);
-        const paymentPubKey = paymentKey.to_public();
-        const stakeKey = accountKey.derive(2).derive(0);
-        const stakePubKey = stakeKey.to_public();
-        const networkId = 0; // testnet
-        const baseAddr = BaseAddress.new(
-          networkId,
-          Credential.from_keyhash(paymentPubKey.to_raw_key().hash()),
-          Credential.from_keyhash(stakePubKey.to_raw_key().hash())
-        );
-        const paymentAddr = baseAddr.to_address().to_bech32();
-        const rewardAddr = RewardAddress.new(networkId, Credential.from_keyhash(stakePubKey.to_raw_key().hash())).to_address().to_bech32();
-
+        const instance = await createWalletFromMnemonic(mnemonic);
+        const paymentAddr = instance.address;
+        // Try to get reward addresses from wallet instance (if available)
+        let rewardAddr = '';
+        try {
+          const rewards = await instance.wallet.getRewardAddresses();
+          if (rewards && rewards.length > 0) rewardAddr = rewards[0];
+        } catch (e) {
+          rewardAddr = 'stake_test1upec3pzlkqf0xgz69uerjartvmptwyms7td2ewlq5w4yrmgv0qd64';
+        }
         // Fake MeshWallet for testing
         const fakeWallet: any = {
           getUtxos: async () => [
