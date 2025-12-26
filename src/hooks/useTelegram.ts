@@ -35,6 +35,7 @@ export interface TelegramState {
   isInTelegram: boolean;
   isReady: boolean;
   user: TelegramUser | null;
+  initData: string;
   themeParams: TelegramThemeParams;
   colorScheme: "light" | "dark";
   platform: string;
@@ -83,6 +84,7 @@ const defaultState: TelegramState = {
   isInTelegram: false,
   isReady: false,
   user: null,
+  initData: "",
   themeParams: {},
   colorScheme: "light",
   platform: "unknown",
@@ -118,6 +120,7 @@ export const useTelegram = (): TelegramState & TelegramActions => {
           isInTelegram: true,
           isReady: true,
           user: tg.initDataUnsafe?.user || null,
+          initData: tg.initData || "",
           themeParams: tg.themeParams || {},
           colorScheme: tg.colorScheme || "light",
           platform: tg.platform || "unknown",
@@ -331,6 +334,7 @@ declare global {
         ready: () => void;
         expand: () => void;
         close: () => void;
+        initData: string;
         initDataUnsafe: {
           user?: TelegramUser;
           query_id?: string;
