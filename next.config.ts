@@ -14,8 +14,16 @@ const nextConfig: NextConfig = {
     };
 
     // Handle WASM file loading
+    // Rule for Lucid Cardano WASM (treat as asset/resource to avoid __wbindgen_placeholder__ error)
+    config.module.rules.push({
+      test: /lucid-cardano.*\.wasm$/,
+      type: "asset/resource",
+    });
+
+    // Rule for other WASM (MeshJS, etc)
     config.module.rules.push({
       test: /\.wasm$/,
+      exclude: /lucid-cardano/,
       type: "webassembly/async",
     });
 
