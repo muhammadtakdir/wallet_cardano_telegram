@@ -4,9 +4,16 @@ import * as React from "react";
 import { useWalletStore, useTelegram } from "@/hooks";
 import { hasStoredWallet, getWalletsList } from "@/lib/storage";
 import { isLockedOut, getLockoutRemaining } from "@/lib/storage/encryption";
-import { WalletDashboard, MnemonicDisplay, MnemonicInput, SendScreen, ReceiveScreen, AssetDetail, StakingScreen } from "@/components/wallet";
+import { WalletDashboard, MnemonicDisplay, MnemonicInput, SendScreen, ReceiveScreen, AssetDetail } from "@/components/wallet";
 import { Card, Button, PinInput, Input } from "@/components/ui";
 import { WalletAsset } from "@/lib/cardano";
+import dynamic from "next/dynamic";
+
+// Dynamically import StakingScreen with SSR disabled to avoid Lucid WASM build errors
+const StakingScreen = dynamic(
+  () => import("@/components/wallet").then((mod) => mod.StakingScreen),
+  { ssr: false }
+);
 
 type AppView = "loading" | "setup" | "create" | "import" | "import-pin" | "backup" | "unlock" | "dashboard" | "send" | "receive" | "asset-detail" | "staking";
 
