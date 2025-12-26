@@ -1,8 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Use webpack for MeshJS WASM support (Turbopack doesn't fully support WASM yet)
-  // Enable WebAssembly support for MeshJS/Cardano libraries
+  // Use webpack for MeshJS/Lucid WASM support
   webpack: (config, { isServer }) => {
     // Enable WASM experiments
     config.experiments = {
@@ -13,10 +12,22 @@ const nextConfig: NextConfig = {
     };
 
     // Handle WASM file loading
-    config.module.rules.push({
-      test: /\.wasm$/,
-      type: "webassembly/async",
-    });
+    if (isServer) {
+      // Ignore WASM on server side to prevent __wbindgen_placeholder__ errors
+      config.module.rules.push({
+        test: /\.wasm$/,
+        loader: "ignore-loader",
+      });
+    } else {
+      // Enable WASM for client side
+      config.module.rules.push({
+        test: /\.wasm$/,
+        type: "webassembly/async",
+      });
+      
+      // Fix for WASM loading in Next.js
+      config.output.webassemblyModuleFilename = "static/wasm/[modulehash].wasm";
+    }
 
     // Fix for packages that use fs, net, tls (common in crypto libraries)
     if (!isServer) {
@@ -29,19 +40,8 @@ const nextConfig: NextConfig = {
       };
     }
 
-    // Ignore WASM files in server-side rendering to prevent issues
-    if (isServer) {
-      config.externals = config.externals || [];
-      config.externals.push({
-        "@meshsdk/core": "commonjs @meshsdk/core",
-      });
-    }
-
     return config;
   },
-
-  // Empty turbopack config to allow webpack config
-  turbopack: {},
 
   // Required for Telegram WebApp and external API calls
   async headers() {
@@ -86,6 +86,9 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  
+  // Suppress warnings
+  serverExternalPackages: ["@meshsdk/core", "lucid-cardano"],
 };
 
 export default nextConfig;
