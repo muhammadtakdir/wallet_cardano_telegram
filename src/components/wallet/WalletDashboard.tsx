@@ -61,11 +61,43 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
     console.log("=== End Debug ===");
   }, [walletAddress, walletName, balance, transactions, network, isLoading, wallets]);
 
-  const { isInTelegram, hapticFeedback, showAlert } = useTelegram();
+  const { isInTelegram, hapticFeedback, showAlert, user, initData } = useTelegram();
 
   const [isRefreshing, setIsRefreshing] = React.useState(false);
   const [showWalletSelector, setShowWalletSelector] = React.useState(false);
   const [showNetworkSelector, setShowNetworkSelector] = React.useState(false);
+  const [userPoints, setUserPoints] = React.useState<number | null>(null);
+  const registeredRef = React.useRef(false);
+
+  // Register user (bind wallet)
+  React.useEffect(() => {
+    const registerUser = async () => {
+      if (walletAddress && user && initData && !registeredRef.current) {
+        registeredRef.current = true; // Prevent double registration
+        try {
+          const response = await fetch("/api/user/register", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              initData,
+              walletAddress,
+            }),
+          });
+          
+          if (response.ok) {
+            const data = await response.json();
+            if (data.success && typeof data.points === "number") {
+              setUserPoints(data.points);
+            }
+          }
+        } catch (error) {
+          console.error("User registration failed:", error);
+        }
+      }
+    };
+
+    registerUser();
+  }, [walletAddress, user, initData]);
 
   // Refresh data on mount
   React.useEffect(() => {
@@ -76,6 +108,7 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
     setIsRefreshing(true);
     try {
       await refreshBalance();
+      // Re-fetch user points if needed (optional)
       if (isInTelegram) {
         hapticFeedback.notificationOccurred("success");
       }
@@ -119,6 +152,20 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
 
   return (
     <div className="min-h-screen bg-gray-100 dark:bg-gray-900">
+      {/* Welcome Banner for Telegram Users */}
+      {user && (
+        <div className="bg-blue-600 text-white px-4 py-2 text-sm flex justify-between items-center shadow-md">
+          <span className="font-medium truncate">
+            Welcome, {safeString(user.first_name)}!
+          </span>
+          {userPoints !== null && (
+            <span className="bg-blue-700 bg-opacity-50 px-2 py-0.5 rounded-full text-xs font-bold whitespace-nowrap">
+              {userPoints} PTS
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Header */}
       <header className="bg-white dark:bg-gray-800 shadow-sm sticky top-0 z-10">
         <div className="px-4 py-3 flex items-center justify-between">
