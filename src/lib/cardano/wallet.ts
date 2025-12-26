@@ -1,4 +1,3 @@
-"use client";
 
 import { BlockfrostProvider, MeshWallet, MeshTxBuilder } from "@meshsdk/core";
 import {
@@ -322,10 +321,11 @@ export const createBlockfrostProvider = (): BlockfrostProvider => {
  * @returns Wallet instance with address and network info
  */
 export const createWalletFromMnemonic = async (
-  mnemonic: string
+  mnemonic: string,
+  networkOverride?: CardanoNetwork
 ): Promise<CardanoWalletInstance> => {
   try {
-    const network = getCurrentNetwork();
+    const network = networkOverride || getCurrentNetwork();
     const networkId = network === "mainnet" ? 1 : 0;
 
     const wallet = new MeshWallet({
@@ -1350,7 +1350,7 @@ export const delegateToPool = async (
   wallet: MeshWallet,
   poolId: string,
   network: CardanoNetwork
-): Promise<{ success: boolean; txHash?: string; error?: string }> => {
+): Promise<{ success: boolean; txHash?: string; error?: string; _debug?: any }> => {
   try {
     // Prefer MeshTxBuilder-based delegation when possible
     let meshResultRef: any = null;
@@ -1374,13 +1374,25 @@ export const delegateToPool = async (
       console.warn('Mesh delegation not available or failed:', meshErr);
     }
 
-    // Fallback to CSL-based delegation which uses mnemonic
+    // Fallback to Lucid-based delegation which uses mnemonic
     let mnemonic = (wallet as any)._mnemonic || (wallet as any).mnemonic;
     if (!mnemonic) {
       return { success: false, error: 'Mesh delegation failed and no mnemonic available for fallback' };
     }
-    // Note: CSL support removed in Mesh-only migration; surface explicit error (include mesh debug if available)
-    return { success: false, error: 'CSL fallback is unavailable in Mesh-only configuration', _debug: meshResultRef && meshResultRef._debug ? meshResultRef._debug : (meshResultRef ? { meshError: meshResultRef.error } : undefined) };
+    try {
+      const { delegateToPoolLucid } = await import('./lucid-stake');
+      const lucidResult = await delegateToPoolLucid(mnemonic, poolId, network);
+      return lucidResult;
+    } catch (lucidErr) {
+      return {
+        success: false,
+        error: 'Mesh and Lucid delegation both failed',
+        _debug: {
+          mesh: meshResultRef,
+          lucid: lucidErr instanceof Error ? lucidErr.message : lucidErr,
+        },
+      };
+    }
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : String(error) };
   }
@@ -1435,16 +1447,29 @@ export const withdrawRewards = async (
     }
 
     try {
-      // Sign the transaction
-      const signedTx = await wallet.signTx(unsignedTx);
+        // Sign the transaction
+        const signedTx = await wallet.signTx(unsignedTx);
 
-      // Submit the transaction
-      const txHash = await wallet.submitTx(signedTx);
+        // Submit the transaction
+        const txHash = await wallet.submitTx(signedTx);
 
-      return { success: true, txHash };
+        return { success: true, txHash };
     } catch (err) {
-      console.error('Error signing/submitting withdrawal transaction:', err);
-      return { success: false, error: 'Error signing/submitting withdrawal transaction: ' + (err instanceof Error ? err.message : String(err)) };
+        console.error('Error signing/submitting withdrawal transaction:', err);
+        // Try Lucid fallback if mnemonic available on wallet instance
+        try {
+          const mnemonic = (wallet as any)._mnemonic || (wallet as any).mnemonic;
+          if (mnemonic) {
+            const { withdrawRewardsLucid } = await import('./lucid-stake');
+            const network = getCurrentNetwork();
+            const lucidRes = await withdrawRewardsLucid(mnemonic, network);
+            return lucidRes as any;
+          }
+        } catch (lucidErr) {
+          console.warn('Lucid fallback for withdraw failed:', lucidErr);
+        }
+
+        return { success: false, error: 'Error signing/submitting withdrawal transaction: ' + (err instanceof Error ? err.message : String(err)) };
     }
   } catch (error) {
     console.error("Error withdrawing rewards:", error);

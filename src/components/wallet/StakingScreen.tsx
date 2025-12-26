@@ -11,7 +11,6 @@ import {
   searchPools,
   getDefaultPool,
   findDefaultPool,
-  delegateToPool,
   withdrawRewards,
   getCurrentEpoch,
   lovelaceToAda,
@@ -20,6 +19,7 @@ import {
   type EpochReward,
 } from "@/lib/cardano";
 import { verifyPin, getStoredWalletForVerification } from "@/lib/storage/encryption";
+import { delegateToPoolMesh } from '@/lib/cardano/mesh-stake';
 
 export interface StakingScreenProps {
   onBack: () => void;
@@ -204,10 +204,10 @@ export const StakingScreen: React.FC<StakingScreenProps> = ({ onBack }) => {
         throw new Error("Wallet not initialized");
       }
 
-      let result: { success: boolean; txHash?: string; error?: string };
+      let result: { success: boolean; txHash?: string; error?: string; _debug?: any };
 
       if (action === "delegate" && selectedPool) {
-        result = await delegateToPool(walletInstance, selectedPool.poolId, network);
+        result = await delegateToPoolMesh(walletInstance, selectedPool.poolId, network);
       } else if (action === "withdraw") {
         result = await withdrawRewards(walletInstance);
       } else {
@@ -218,7 +218,12 @@ export const StakingScreen: React.FC<StakingScreenProps> = ({ onBack }) => {
         setTxHash(result.txHash);
         setStep("success");
       } else {
-        throw new Error(result.error || "Transaction failed");
+        // Jika ada _debug info, tampilkan di error agar user bisa copy
+        let debugInfo = '';
+        if (result._debug) {
+          debugInfo = '\n\n[DEBUG INFO]\n' + JSON.stringify(result._debug, null, 2);
+        }
+        throw new Error((result.error || "Transaction failed") + debugInfo);
       }
     } catch (err) {
       console.error("Action error:", err);
