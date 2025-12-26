@@ -9,17 +9,18 @@ import {
   getPoolInfo,
   getRewardHistory,
   searchPools,
+  getTopPools,
   getDefaultPool,
   findDefaultPool,
-  withdrawRewards,
+  withdrawRewards, // Keep this for now or replace if Lucid has one
   getCurrentEpoch,
   lovelaceToAda,
   type StakingInfo,
   type StakePoolInfo,
   type EpochReward,
 } from "@/lib/cardano";
-import { verifyPin, getStoredWalletForVerification } from "@/lib/storage/encryption";
-import { delegateToPoolMesh } from '@/lib/cardano/mesh-stake';
+import { verifyPin, getStoredWalletForVerification, decryptWallet } from "@/lib/storage/encryption";
+import { delegateToPoolLucid, withdrawRewardsLucid, deregisterStakeLucid } from '@/lib/cardano/lucid-stake';
 
 export interface StakingScreenProps {
   onBack: () => void;
@@ -43,12 +44,13 @@ export const StakingScreen: React.FC<StakingScreenProps> = ({ onBack }) => {
   const [searchQuery, setSearchQuery] = React.useState("");
   const [searchResults, setSearchResults] = React.useState<StakePoolInfo[]>([]);
   const [isSearching, setIsSearching] = React.useState(false);
+  const [page, setPage] = React.useState(1);
   
   // Selected pool for delegation
   const [selectedPool, setSelectedPool] = React.useState<StakePoolInfo | null>(null);
   
   // Action state
-  const [action, setAction] = React.useState<"delegate" | "withdraw" | null>(null);
+  const [action, setAction] = React.useState<"delegate" | "withdraw" | "undelegate" | null>(null);
   const [pin, setPin] = React.useState("");
   const [pinError, setPinError] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
@@ -96,9 +98,33 @@ export const StakingScreen: React.FC<StakingScreenProps> = ({ onBack }) => {
     loadStakingData();
   }, [walletAddress]);
 
+  // Initial load for search screen (browse mode)
+  React.useEffect(() => {
+    if (step === "search" && !searchQuery) {
+      loadTopPools(1);
+    }
+  }, [step, searchQuery]);
+
+  const loadTopPools = async (pageNum: number) => {
+    setIsSearching(true);
+    try {
+      const results = await getTopPools(pageNum);
+      setSearchResults(results);
+    } catch (err) {
+      console.error("Error loading top pools:", err);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
   // Search pools
   const handleSearch = async () => {
-    if (!searchQuery.trim()) return;
+    if (!searchQuery.trim()) {
+      // If search cleared, go back to browsing
+      setPage(1);
+      loadTopPools(1);
+      return;
+    }
     
     setIsSearching(true);
     try {
@@ -110,6 +136,27 @@ export const StakingScreen: React.FC<StakingScreenProps> = ({ onBack }) => {
     } finally {
       setIsSearching(false);
     }
+  };
+
+  const handleNextPage = () => {
+    const nextPage = page + 1;
+    setPage(nextPage);
+    loadTopPools(nextPage);
+  };
+
+  const handlePrevPage = () => {
+    if (page > 1) {
+      const prevPage = page - 1;
+      setPage(prevPage);
+      loadTopPools(prevPage);
+    }
+  };
+
+  const openSearch = () => {
+    setSearchQuery("");
+    setSearchResults([]);
+    setPage(1);
+    setStep("search");
   };
 
   // Select pool
@@ -163,6 +210,12 @@ export const StakingScreen: React.FC<StakingScreenProps> = ({ onBack }) => {
     setStep("confirm");
   };
 
+  // Start undelegation
+  const handleStartUndelegation = () => {
+    setAction("undelegate");
+    setStep("confirm");
+  };
+
   // Confirm action
   const handleConfirm = () => {
     setPin("");
@@ -185,7 +238,7 @@ export const StakingScreen: React.FC<StakingScreenProps> = ({ onBack }) => {
         setPin("");
         return;
       }
-      await executeAction();
+      await executeAction(enteredPin);
     } catch (err) {
       console.error("PIN verification error:", err);
       setPinError("Verification failed. Please try again.");
@@ -194,22 +247,35 @@ export const StakingScreen: React.FC<StakingScreenProps> = ({ onBack }) => {
   };
 
   // Execute delegation or withdrawal
-  const executeAction = async () => {
+  const executeAction = async (pin: string) => {
     setStep("processing");
     setError(null);
 
     try {
-      const walletInstance = useWalletStore.getState()._walletInstance;
-      if (!walletInstance) {
-        throw new Error("Wallet not initialized");
+      // Decrypt mnemonic using PIN
+      const mnemonic = decryptWallet(pin, activeWalletId || undefined);
+      if (!mnemonic) {
+        throw new Error("Failed to authenticate wallet. Please try again.");
       }
 
       let result: { success: boolean; txHash?: string; error?: string; _debug?: any };
 
       if (action === "delegate" && selectedPool) {
-        result = await delegateToPoolMesh(walletInstance, selectedPool.poolId, network);
+        // Diagnostic: log selected pool (non-sensitive)
+        try {
+          // eslint-disable-next-line no-console
+          console.debug('[StakingScreen] delegateClick (Lucid)', { poolId: selectedPool.poolId });
+        } catch (e) {
+          // ignore logging errors
+        }
+        // Use Lucid for delegation
+        result = await delegateToPoolLucid(mnemonic, selectedPool.poolId, network);
       } else if (action === "withdraw") {
-        result = await withdrawRewards(walletInstance);
+        // Use Lucid for withdrawal
+        result = await withdrawRewardsLucid(mnemonic, network);
+      } else if (action === "undelegate") {
+        // Use Lucid for deregistration
+        result = await deregisterStakeLucid(mnemonic, network);
       } else {
         throw new Error("Invalid action");
       }
@@ -285,13 +351,25 @@ export const StakingScreen: React.FC<StakingScreenProps> = ({ onBack }) => {
 
               {stakingInfo?.active && currentPool && (
                 <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-4 mb-4">
-                  <p className="text-xs text-blue-600 dark:text-blue-400 mb-1">Delegated to</p>
-                  <p className="text-lg font-bold text-gray-900 dark:text-white">
-                    [{currentPool.ticker}] {currentPool.name}
-                  </p>
-                  <p className="text-xs text-gray-500 font-mono mt-1">
-                    {currentPool.poolId.slice(0, 20)}...
-                  </p>
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <p className="text-xs text-blue-600 dark:text-blue-400 mb-1">Delegated to</p>
+                      <p className="text-lg font-bold text-gray-900 dark:text-white">
+                        [{currentPool.ticker}] {currentPool.name}
+                      </p>
+                      <p className="text-xs text-gray-500 font-mono mt-1">
+                        {currentPool.poolId.slice(0, 20)}...
+                      </p>
+                    </div>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="ml-2 border-red-200 text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/20"
+                      onClick={handleStartUndelegation}
+                    >
+                      Undelegate
+                    </Button>
+                  </div>
                 </div>
               )}
 
@@ -366,7 +444,7 @@ export const StakingScreen: React.FC<StakingScreenProps> = ({ onBack }) => {
                     variant="outline"
                     fullWidth
                     size="lg"
-                    onClick={() => setStep("search")}
+                    onClick={openSearch}
                   >
                     <SearchIcon className="w-5 h-5 mr-2" />
                     Change Stake Pool
@@ -387,7 +465,7 @@ export const StakingScreen: React.FC<StakingScreenProps> = ({ onBack }) => {
                     variant="outline"
                     fullWidth
                     size="lg"
-                    onClick={() => setStep("search")}
+                    onClick={openSearch}
                   >
                     <SearchIcon className="w-5 h-5 mr-2" />
                     Search Other Pools
@@ -427,7 +505,9 @@ export const StakingScreen: React.FC<StakingScreenProps> = ({ onBack }) => {
           <button onClick={() => setStep("overview")} className="p-2 hover:bg-gray-200 dark:hover:bg-gray-800 rounded-lg">
             <BackIcon className="w-5 h-5 text-gray-600 dark:text-gray-400" />
           </button>
-          <h1 className="text-xl font-bold text-gray-900 dark:text-white">Search Pools</h1>
+          <h1 className="text-xl font-bold text-gray-900 dark:text-white">
+            {searchQuery ? "Search Pools" : "Browse Pools"}
+          </h1>
         </header>
 
         {/* Search Input */}
@@ -443,7 +523,7 @@ export const StakingScreen: React.FC<StakingScreenProps> = ({ onBack }) => {
           <Button
             variant="primary"
             onClick={handleSearch}
-            disabled={isSearching || !searchQuery.trim()}
+            disabled={isSearching}
           >
             {isSearching ? (
               <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white" />
@@ -453,25 +533,27 @@ export const StakingScreen: React.FC<StakingScreenProps> = ({ onBack }) => {
           </Button>
         </div>
 
-        {/* Default Pool Suggestion */}
-        <Card padding="md" className="mb-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800" onClick={() => {
-          handleLoadDefaultPool();
-        }}>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center">
-              <StarIcon className="w-5 h-5 text-blue-600" />
+        {/* Default Pool Suggestion - only show if not already delegated to it */}
+        {(!currentPool || currentPool.ticker !== "ADI") && (
+          <Card padding="md" className="mb-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800" onClick={() => {
+            handleLoadDefaultPool();
+          }}>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center">
+                <StarIcon className="w-5 h-5 text-blue-600" />
+              </div>
+              <div className="flex-1">
+                <p className="font-medium text-gray-900 dark:text-white">[ADI] Cardanesia</p>
+                <p className="text-sm text-gray-500">Recommended Pool (if available)</p>
+              </div>
+              {isLoading ? (
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600" />
+              ) : (
+                <ChevronRightIcon className="w-5 h-5 text-gray-400" />
+              )}
             </div>
-            <div className="flex-1">
-              <p className="font-medium text-gray-900 dark:text-white">[ADI] Cardanesia</p>
-              <p className="text-sm text-gray-500">Recommended Pool (if available)</p>
-            </div>
-            {isLoading ? (
-              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600" />
-            ) : (
-              <ChevronRightIcon className="w-5 h-5 text-gray-400" />
-            )}
-          </div>
-        </Card>
+          </Card>
+        )}
 
         {/* Error message */}
         {error && (
@@ -482,9 +564,16 @@ export const StakingScreen: React.FC<StakingScreenProps> = ({ onBack }) => {
 
         {/* Search Results */}
         {searchResults.length > 0 && (
-          <div className="space-y-3">
-            <p className="text-sm text-gray-500">{searchResults.length} pools found</p>
-            {searchResults.map((pool) => (
+          <div className="space-y-3 pb-8">
+            <p className="text-sm text-gray-500">
+              {searchQuery 
+                ? `${searchResults.filter(p => p.poolId !== currentPool?.poolId).length} pools found`
+                : `Top pools (Page ${page})`
+              }
+            </p>
+            {searchResults
+              .filter(pool => pool.poolId !== currentPool?.poolId)
+              .map((pool) => (
               <Card
                 key={pool.poolId}
                 padding="md"
@@ -507,10 +596,33 @@ export const StakingScreen: React.FC<StakingScreenProps> = ({ onBack }) => {
                 </div>
               </Card>
             ))}
+
+            {/* Pagination Controls - Only show when NOT searching (browsing mode) */}
+            {!searchQuery && (
+              <div className="flex justify-center gap-4 mt-6">
+                <Button 
+                  variant="outline" 
+                  onClick={handlePrevPage} 
+                  disabled={page === 1 || isSearching}
+                >
+                  Previous
+                </Button>
+                <span className="flex items-center text-sm text-gray-500">
+                  Page {page}
+                </span>
+                <Button 
+                  variant="outline" 
+                  onClick={handleNextPage}
+                  disabled={isSearching}
+                >
+                  Next
+                </Button>
+              </div>
+            )}
           </div>
         )}
 
-        {searchQuery && searchResults.length === 0 && !isSearching && (
+        {searchQuery && searchResults.filter(p => p.poolId !== currentPool?.poolId).length === 0 && !isSearching && (
           <div className="text-center py-8 text-gray-500">
             No pools found for "{searchQuery}"
           </div>
@@ -629,7 +741,7 @@ export const StakingScreen: React.FC<StakingScreenProps> = ({ onBack }) => {
             <BackIcon className="w-5 h-5 text-gray-600 dark:text-gray-400" />
           </button>
           <h1 className="text-xl font-bold text-gray-900 dark:text-white">
-            {action === "delegate" ? "Confirm Delegation" : "Confirm Withdrawal"}
+            {action === "delegate" ? "Confirm Delegation" : action === "withdraw" ? "Confirm Withdrawal" : "Confirm Undelegation"}
           </h1>
         </header>
 
@@ -675,6 +787,27 @@ export const StakingScreen: React.FC<StakingScreenProps> = ({ onBack }) => {
             </>
           )}
 
+          {action === "undelegate" && (
+            <>
+              <div className="text-center py-4">
+                <p className="text-sm text-gray-500 mb-2">You are deregistering your stake key</p>
+                <p className="text-xl font-bold text-red-600">
+                  This will stop all staking rewards
+                </p>
+              </div>
+
+              <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-xl p-3">
+                <div className="flex items-start gap-2">
+                  <WarningIcon className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+                  <div className="text-sm text-yellow-800 dark:text-yellow-200">
+                    <p>You will receive your ~2 ADA deposit back.</p>
+                    <p className="mt-1">Any remaining rewards will be automatically withdrawn.</p>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
           <div className="grid grid-cols-2 gap-3">
             <Button variant="outline" fullWidth onClick={() => setStep("overview")}>
               Cancel
@@ -704,7 +837,7 @@ export const StakingScreen: React.FC<StakingScreenProps> = ({ onBack }) => {
         <Card padding="lg" className="text-center">
           <LockIcon className="w-12 h-12 text-blue-600 mx-auto mb-4" />
           <p className="text-gray-600 dark:text-gray-400 mb-6">
-            Enter your PIN to confirm the {action === "delegate" ? "delegation" : "withdrawal"}
+            Enter your PIN to confirm the {action === "delegate" ? "delegation" : action === "withdraw" ? "withdrawal" : "undelegation"}
           </p>
           <PinInput value={pin} onChange={setPin} onComplete={handlePinComplete} error={pinError || undefined} autoFocus />
         </Card>
@@ -721,7 +854,7 @@ export const StakingScreen: React.FC<StakingScreenProps> = ({ onBack }) => {
         <Card padding="lg" className="text-center w-full max-w-sm">
           <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto mb-6" />
           <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
-            {action === "delegate" ? "Delegating..." : "Withdrawing Rewards..."}
+            {action === "delegate" ? "Delegating..." : action === "withdraw" ? "Withdrawing Rewards..." : "Undelegating..."}
           </h2>
           <p className="text-gray-500">Please wait while your transaction is being processed...</p>
         </Card>
@@ -740,12 +873,14 @@ export const StakingScreen: React.FC<StakingScreenProps> = ({ onBack }) => {
             <CheckIcon className="w-8 h-8 text-green-600" />
           </div>
           <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
-            {action === "delegate" ? "Delegation Successful!" : "Withdrawal Successful!"}
+            {action === "delegate" ? "Delegation Successful!" : action === "withdraw" ? "Withdrawal Successful!" : "Undelegation Successful!"}
           </h2>
           <p className="text-gray-500 mb-4">
             {action === "delegate"
               ? "Your delegation will be active in 2-3 epochs."
-              : "Rewards have been added to your balance."}
+              : action === "withdraw"
+              ? "Rewards have been added to your balance."
+              : "Your stake key has been deregistered and deposit returned."}
           </p>
           {txHash && (
             <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-3 mb-6">

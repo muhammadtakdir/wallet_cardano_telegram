@@ -303,12 +303,12 @@ export interface CardanoWalletInstance {
 /**
  * Create a Blockfrost provider instance
  */
-export const createBlockfrostProvider = (): BlockfrostProvider => {
-  const apiKey = getBlockfrostApiKey();
-  const url = getBlockfrostUrl();
+export const createBlockfrostProvider = (network?: CardanoNetwork): BlockfrostProvider => {
+  const apiKey = getBlockfrostApiKey(network);
+  // const url = getBlockfrostUrl(network); // currently BlockfrostProvider takes only the key
 
   if (!apiKey) {
-    console.warn("Blockfrost API key not configured. Some features may not work.");
+    console.warn("Blockfrost API key not configured for network. Some features may not work.");
   }
 
   return new BlockfrostProvider(apiKey);
@@ -327,14 +327,21 @@ export const createWalletFromMnemonic = async (
   try {
     const network = networkOverride || getCurrentNetwork();
     const networkId = network === "mainnet" ? 1 : 0;
+    // Normalize mnemonic to avoid issues with extra spaces/casing
+    try {
+      const { normalizeMnemonic } = await import('./mnemonic');
+      mnemonic = normalizeMnemonic(String(mnemonic));
+    } catch (e) {
+      // ignore and continue with original mnemonic
+    }
 
     const wallet = new MeshWallet({
       networkId,
-      fetcher: createBlockfrostProvider(),
-      submitter: createBlockfrostProvider(),
+      fetcher: createBlockfrostProvider(network),
+      submitter: createBlockfrostProvider(network),
       key: {
         type: "mnemonic",
-        words: mnemonic.split(" "),
+        words: String(mnemonic).trim().split(/\s+/),
       },
     });
 
@@ -342,6 +349,9 @@ export const createWalletFromMnemonic = async (
     try {
       (wallet as any)._mnemonic = mnemonic;
       (wallet as any).mnemonic = mnemonic;
+      // Diagnostic: indicate mnemonic was attached to wallet instance (do NOT log mnemonic)
+      // eslint-disable-next-line no-console
+      console.info('[createWalletFromMnemonic] mnemonicAttached:', !!(wallet as any)._mnemonic, 'network:', network);
     } catch (e) {
       // ignore
     }
@@ -632,10 +642,10 @@ export const getTransactionDetails = async (
 /**
  * Get UTxOs for address
  */
-export const getAddressUtxos = async (address: string) => {
+export const getAddressUtxos = async (address: string, network?: CardanoNetwork) => {
   try {
-    const apiKey = getBlockfrostApiKey();
-    const baseUrl = getBlockfrostUrl();
+    const apiKey = getBlockfrostApiKey(network);
+    const baseUrl = getBlockfrostUrl(network);
 
     if (!apiKey) {
       return [];
@@ -1204,62 +1214,156 @@ export const searchPools = async (query: string): Promise<StakePoolInfo[]> => {
     const apiKey = getBlockfrostApiKey();
     const baseUrl = getBlockfrostUrl();
 
-    if (!apiKey) return [];
+    if (!apiKey || !query) return [];
 
-    // Get list of pools
-    const response = await fetch(`${baseUrl}/pools/extended?count=100`, {
+    const searchLower = query.toLowerCase().trim();
+
+    // 1. Direct Pool ID lookup
+    if (searchLower.startsWith("pool1") && searchLower.length > 50) {
+      const pool = await getPoolInfo(searchLower);
+      return pool ? [pool] : [];
+    }
+
+    // 2. Search top pools (fetching more candidates, parallel processing)
+    // We fetch top 100 pools to have a decent candidate set
+    const response = await fetch(`${baseUrl}/pools/extended?count=100&order=desc`, {
       headers: { project_id: apiKey },
     });
 
     if (!response.ok) return [];
 
     const pools = await response.json();
+    
+    // Process pools in batches to avoid rate limits but improve speed
+    const batchSize = 10;
     const results: StakePoolInfo[] = [];
-    const searchLower = query.toLowerCase();
-
-    // Filter and get metadata for matching pools
-    for (const pool of pools.slice(0, 50)) { // Limit search
-      // Get metadata
-      try {
-        const metaResponse = await fetch(`${baseUrl}/pools/${pool.pool_id}/metadata`, {
-          headers: { project_id: apiKey },
-        });
-        
-        if (metaResponse.ok) {
-          const meta = await metaResponse.json();
-          const ticker = meta.ticker?.toLowerCase() || "";
-          const name = meta.name?.toLowerCase() || "";
-          
-          if (ticker.includes(searchLower) || name.includes(searchLower)) {
-            results.push({
-              poolId: pool.pool_id,
-              ticker: meta.ticker || "Unknown",
-              name: meta.name || "Unknown Pool",
-              description: meta.description,
-              homepage: meta.homepage,
-              saturation: pool.live_saturation ? parseFloat(pool.live_saturation) * 100 : 0,
-              pledge: pool.declared_pledge || "0",
-              margin: pool.margin_cost ? parseFloat(pool.margin_cost) * 100 : 0,
-              fixedCost: pool.fixed_cost || "340000000",
-              activeStake: pool.active_stake || "0",
-              liveStake: pool.live_stake || "0",
-              blocksEpoch: pool.blocks_epoch || 0,
-              blocksMinted: pool.blocks_minted || 0,
-              ros: 0,
-              delegators: pool.live_delegators || 0,
+    
+    // Check first 50 pools (most relevant usually)
+    const candidates = pools.slice(0, 50);
+    
+    for (let i = 0; i < candidates.length; i += batchSize) {
+      const batch = candidates.slice(i, i + batchSize);
+      
+      const batchResults = await Promise.all(
+        batch.map(async (pool: any) => {
+          try {
+            const metaResponse = await fetch(`${baseUrl}/pools/${pool.pool_id}/metadata`, {
+              headers: { project_id: apiKey },
             });
             
-            if (results.length >= 10) break; // Limit results
+            if (!metaResponse.ok) return null;
+            
+            const meta = await metaResponse.json();
+            const ticker = meta.ticker?.toLowerCase() || "";
+            const name = meta.name?.toLowerCase() || "";
+            
+            if (ticker.includes(searchLower) || name.includes(searchLower)) {
+              return {
+                poolId: pool.pool_id,
+                ticker: meta.ticker || "Unknown",
+                name: meta.name || "Unknown Pool",
+                description: meta.description,
+                homepage: meta.homepage,
+                saturation: pool.live_saturation ? parseFloat(pool.live_saturation) * 100 : 0,
+                pledge: pool.declared_pledge || "0",
+                margin: pool.margin_cost ? parseFloat(pool.margin_cost) * 100 : 0,
+                fixedCost: pool.fixed_cost || "340000000",
+                activeStake: pool.active_stake || "0",
+                liveStake: pool.live_stake || "0",
+                blocksEpoch: pool.blocks_epoch || 0,
+                blocksMinted: pool.blocks_minted || 0,
+                ros: 0,
+                delegators: pool.live_delegators || 0,
+              };
+            }
+          } catch {
+            return null;
           }
-        }
-      } catch {
-        // Skip pools with no metadata
-      }
+          return null;
+        })
+      );
+      
+      const found = batchResults.filter((p): p is StakePoolInfo => p !== null);
+      results.push(...found);
+      
+      // Early exit if we found enough results
+      if (results.length >= 20) break;
     }
 
     return results;
   } catch (error) {
     console.error("Error searching pools:", error);
+    return [];
+  }
+};
+
+/**
+ * Get top pools (paginated) for browsing
+ */
+export const getTopPools = async (page: number = 1): Promise<StakePoolInfo[]> => {
+  try {
+    const apiKey = getBlockfrostApiKey();
+    const baseUrl = getBlockfrostUrl();
+
+    if (!apiKey) return [];
+
+    // Fetch pools sorted by stake (descending)
+    // count=20 per page
+    const response = await fetch(`${baseUrl}/pools/extended?count=20&page=${page}&order=desc`, {
+      headers: { project_id: apiKey },
+    });
+
+    if (!response.ok) return [];
+
+    const pools = await response.json();
+    
+    // Fetch metadata in parallel
+    const poolInfos = await Promise.all(
+      pools.map(async (pool: any) => {
+        try {
+          const metaResponse = await fetch(`${baseUrl}/pools/${pool.pool_id}/metadata`, {
+            headers: { project_id: apiKey },
+          });
+          
+          let ticker = "Unknown";
+          let name = "Unknown Pool";
+          let description = undefined;
+          let homepage = undefined;
+
+          if (metaResponse.ok) {
+            const meta = await metaResponse.json();
+            ticker = meta.ticker || ticker;
+            name = meta.name || name;
+            description = meta.description;
+            homepage = meta.homepage;
+          }
+
+          return {
+            poolId: pool.pool_id,
+            ticker,
+            name,
+            description,
+            homepage,
+            saturation: pool.live_saturation ? parseFloat(pool.live_saturation) * 100 : 0,
+            pledge: pool.declared_pledge || "0",
+            margin: pool.margin_cost ? parseFloat(pool.margin_cost) * 100 : 0,
+            fixedCost: pool.fixed_cost || "340000000",
+            activeStake: pool.active_stake || "0",
+            liveStake: pool.live_stake || "0",
+            blocksEpoch: pool.blocks_epoch || 0,
+            blocksMinted: pool.blocks_minted || 0,
+            ros: 0,
+            delegators: pool.live_delegators || 0,
+          };
+        } catch {
+          return null;
+        }
+      })
+    );
+
+    return poolInfos.filter((p): p is StakePoolInfo => p !== null);
+  } catch (error) {
+    console.error("Error getting top pools:", error);
     return [];
   }
 };
@@ -1352,6 +1456,14 @@ export const delegateToPool = async (
   network: CardanoNetwork
 ): Promise<{ success: boolean; txHash?: string; error?: string; _debug?: any }> => {
   try {
+    // Development simulation mode: return a fake successful delegation without touching network
+    const simulate = process.env.NEXT_PUBLIC_SIMULATE_DELEGATION === 'true' || process.env.SIMULATE_DELEGATION === 'true';
+    if (simulate) {
+      const txHash = `simulated-delegate-${poolId}-${Date.now()}`;
+      // eslint-disable-next-line no-console
+      console.info('[delegateToPool] SIMULATED delegation active - returning fake success', { poolId, network, txHash });
+      return { success: true, txHash, _debug: { simulated: true, poolId, network } };
+    }
     // Prefer MeshTxBuilder-based delegation when possible
     let meshResultRef: any = null;
     try {
@@ -1375,21 +1487,39 @@ export const delegateToPool = async (
     }
 
     // Fallback to Lucid-based delegation which uses mnemonic
-    let mnemonic = (wallet as any)._mnemonic || (wallet as any).mnemonic;
-    if (!mnemonic) {
-      return { success: false, error: 'Mesh delegation failed and no mnemonic available for fallback' };
+    const mnemonicRaw = (wallet as any)._mnemonic || (wallet as any).mnemonic;
+    if (!mnemonicRaw) {
+      console.warn('[delegateToPool] Mesh failed and no mnemonic available for Lucid fallback');
+      return { success: false, error: 'Mesh delegation failed and no mnemonic available for fallback', _debug: { mesh: meshResultRef } };
     }
+    // Normalize and log mnemonic metadata (do NOT log the mnemonic itself)
     try {
+      const { normalizeMnemonic, validateMnemonic, getMnemonicWordCount } = await import('./mnemonic');
+      const normalizedMnemonic = normalizeMnemonic(String(mnemonicRaw));
+      const wordCount = getMnemonicWordCount(normalizedMnemonic);
+      const valid = validateMnemonic(normalizedMnemonic);
+      // eslint-disable-next-line no-console
+      console.info('[delegateToPool] using Lucid fallback - mnemonic wordCount:', wordCount, 'valid:', valid);
+      if (!valid) {
+        return { success: false, error: '[lucid-fallback] Invalid mnemonic', _debug: { wordCount, valid, mesh: meshResultRef } };
+      }
       const { delegateToPoolLucid } = await import('./lucid-stake');
-      const lucidResult = await delegateToPoolLucid(mnemonic, poolId, network);
+      const lucidResult = await delegateToPoolLucid(String(normalizedMnemonic), poolId, network);
+      if (!lucidResult.success) {
+        // include mesh debug for tracing
+        lucidResult._debug = { ...(lucidResult._debug || {}), mesh: meshResultRef };
+      }
       return lucidResult;
     } catch (lucidErr) {
+      const lucidMsg = lucidErr instanceof Error ? lucidErr.message : String(lucidErr);
+      // eslint-disable-next-line no-console
+      console.error('[delegateToPool] Lucid fallback error:', lucidMsg);
       return {
         success: false,
         error: 'Mesh and Lucid delegation both failed',
         _debug: {
           mesh: meshResultRef,
-          lucid: lucidErr instanceof Error ? lucidErr.message : lucidErr,
+          lucid: lucidMsg,
         },
       };
     }

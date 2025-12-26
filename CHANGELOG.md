@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Added
+- **User Registration System (Binding)**: Links Telegram identity to Cardano wallet address.
+  - New API endpoint `/api/user/register` to securely handle user registration.
+  - Validates Telegram `initData` hash to prevent spoofing.
+  - Uses Supabase to store user data (Telegram ID, username, wallet address).
+  - **Welcome Bonus**: Awards 100 points to new users upon first registration.
+  - Updates existing users' wallet addresses if changed.
+- **Supabase Integration**: Added `@supabase/supabase-js` client and `src/lib/supabaseAdmin.ts` for secure database operations.
+
+### Fixed
+- **Staking Functionality**:
+  - Switched staking implementation from MeshJS to **Lucid** for better reliability and transaction building.
+  - Added automatic **Stake Key Registration** logic: automatically handles the ~2 ADA deposit if the key is not yet registered on-chain.
+  - Fixed "Invalid mnemonic" errors by optimizing library imports and seed generation.
+- **Pool Search & Browsing**:
+  - Optimized `searchPools` to support **direct Pool ID lookup** and parallel metadata fetching for speed.
+  - Added **Paginated Browsing**: Users can now browse all available pools (Next/Previous buttons) when not searching.
+  - Improved UI: Hides the currently delegated pool from search results to prevent confusion.
+  - Added "Undelegate" button to easily deregister stake key and reclaim deposit.
+
 ## [0.4.0] - 2024-12-22 - Staking Feature ⚡
 
 ### Added

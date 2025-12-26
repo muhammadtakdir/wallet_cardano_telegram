@@ -19,11 +19,11 @@ export default function E2EStakePage() {
         const network = (url.searchParams.get("network") || "preprod") as any;
 
         // Create a Mesh wallet instance from mnemonic and use delegateToPool wrapper
-        const instance = await createWalletFromMnemonic(mnemonic);
+        const instance = await createWalletFromMnemonic(mnemonic, network as any);
 
         // Ensure the Mesh wallet has UTxOs in Mesh format (convert Blockfrost format to Mesh expected format)
         try {
-          const bfUtxos = await getAddressUtxos(instance.address);
+          const bfUtxos = await getAddressUtxos(instance.address, network as any);
           const meshUtxos = (bfUtxos || []).map((u: any) => ({
             input: {
               txHash: u.tx_hash || u.input?.txHash,

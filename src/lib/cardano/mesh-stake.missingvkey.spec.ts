@@ -2,8 +2,8 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { delegateToPoolMesh } from './mesh-stake';
 
 // Patch global for test
-const origResolvePaymentKeyHash = globalThis.__resolvePaymentKeyHash;
-globalThis.__resolvePaymentKeyHash = (addr: string) => {
+const origResolvePaymentKeyHash = (globalThis as any).__resolvePaymentKeyHash;
+(globalThis as any).__resolvePaymentKeyHash = (addr: string) => {
   // Simulate a valid KeyHash address (hex string, 56 chars)
   if (String(addr).startsWith('addr_test1_vkh_')) return '6efc3a3c5f0c81d61b40df0cd75432ef6382c6d6aa705ea14ad45445';
   if (String(addr).startsWith('addr_test1_vkh_other')) return 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
@@ -24,7 +24,7 @@ const _origMeshTxBuilder = (globalThis as any).__MeshTxBuilderMock;
 
 describe('delegateToPoolMesh - MissingVKeyWitnesses error mapping', () => {
   afterEach(() => {
-    globalThis.__resolvePaymentKeyHash = origResolvePaymentKeyHash;
+    (globalThis as any).__resolvePaymentKeyHash = origResolvePaymentKeyHash;
   });
 
   it('maps MissingVKeyWitnesses error to offending address and key hash', async () => {

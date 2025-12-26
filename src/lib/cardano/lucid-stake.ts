@@ -1,5 +1,4 @@
 
-
 import { getBlockfrostApiKey, getBlockfrostUrl, type CardanoNetwork } from './types';
 import { validateMnemonic, normalizeMnemonic } from './mnemonic';
 import { Lucid, Blockfrost } from 'lucid-cardano';
@@ -19,66 +18,87 @@ export async function delegateToPoolLucid(
 ): Promise<{ success: boolean; txHash?: string; error?: string; _debug?: any }> {
 
   try {
-    // Validate mnemonic
-    if (!validateMnemonic(mnemonic)) {
-      return { success: false, error: 'Invalid mnemonic for Lucid staking' };
+    const normalized = normalizeMnemonic(mnemonic);
+    
+    // 1. Basic validation
+    if (!normalized) {
+      return { success: false, error: 'Mnemonic is empty' };
     }
 
-    // Blockfrost setup
+    // 2. Blockfrost setup
     const blockfrostKey = getBlockfrostApiKey(network);
     const blockfrostUrl = getBlockfrostUrl(network);
     if (!blockfrostKey) {
       return { success: false, error: 'Blockfrost API key not set for network: ' + network };
     }
 
-    // Init Lucid
+    // 3. Init Lucid
     const lucid = await Lucid.new(
       new Blockfrost(blockfrostUrl, blockfrostKey),
       network === 'mainnet' ? 'Mainnet' : network === 'preprod' ? 'Preprod' : 'Preview'
     );
 
-    // Restore wallet from mnemonic
-    const normalized = normalizeMnemonic(mnemonic);
-    // Lucid expects a seed (Uint8Array) for selectWalletFromSeed
-    const { mnemonicToSeedSync } = await import('bip39');
-    const seedBuffer = mnemonicToSeedSync(normalized); // Buffer
-    lucid.selectWalletFromSeed(seedBuffer.toString('hex'));
-    const paymentAddress = await lucid.wallet.address();
+    // 4. Restore wallet from mnemonic using Lucid's selectWalletFromSeed
+    // In Lucid 0.10.x, selectWalletFromSeed actually takes the mnemonic string.
+    try {
+      lucid.selectWalletFromSeed(normalized);
+    } catch (mnemonicErr: any) {
+      console.error('[lucid-stake] selectWalletFromSeed failed:', mnemonicErr);
+      return { 
+        success: false, 
+        error: 'Invalid mnemonic: ' + (mnemonicErr?.message || String(mnemonicErr)),
+        _debug: { mnemonicLength: normalized.split(' ').length }
+      };
+    }
+
     const rewardAddress = await lucid.wallet.rewardAddress();
     if (!rewardAddress) {
       return { success: false, error: 'Could not derive reward address from mnemonic' };
     }
-    if (typeof window !== 'undefined') {
-      console.debug('[lucid-fallback] paymentAddress:', paymentAddress);
-      console.debug('[lucid-fallback] rewardAddress:', rewardAddress);
-      console.debug('[lucid-fallback] seed (hex):', seedBuffer.toString('hex'));
+
+    // 5. Check if stake key is registered
+    let isRegistered = false;
+    try {
+      const resp = await fetch(`${blockfrostUrl}/accounts/${rewardAddress}`, {
+        headers: { project_id: blockfrostKey },
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        isRegistered = data.active;
+      }
+    } catch (e) {
+      // Ignore error, assume not registered if check fails
+      console.warn('[lucid-stake] Failed to check registration status', e);
     }
 
-    // Build, sign and submit delegation using Lucid high-level API
+    // 6. Build, sign and submit delegation
     try {
-      const tx = (await lucid
-        .newTx()
-        .delegateTo(rewardAddress, poolId)
-        .complete()) as any;
-
-      // Try Lucid's sign API for this version
-      const signed = await tx.sign().complete();
-
+      let tx = lucid.newTx();
+      
+      // Register stake key if not active
+      if (!isRegistered) {
+        tx = tx.registerStake(rewardAddress);
+      }
+      
+      tx = tx.delegateTo(rewardAddress, poolId);
+      
+      const txComplete = await tx.complete();
+      const signed = await txComplete.sign().complete();
       const txHash = await signed.submit();
-
       return { success: true, txHash };
-    } catch (err) {
-      const msg = typeof err === 'object' && err && 'message' in err ? (err as any).message : String(err);
-      return { success: false, error: 'Lucid failed to build/sign/submit delegation: ' + msg, _debug: err };
+    } catch (err: any) {
+      const msg = err?.message || String(err);
+      return { success: false, error: 'Lucid delegation failed: ' + msg, _debug: err };
     }
   } catch (error: any) {
-    // Top-level catch
-    return { success: false, error: '[lucid-fallback] ' + (error?.message || String(error)), _debug: error };
+    const msg = error?.message || String(error);
+    console.error('[lucid-stake] Unexpected error:', error);
+    return { success: false, error: '[lucid-stake] ' + msg, _debug: { message: msg, stack: error?.stack } };
   }
 }
 
 async function initLucidFromMnemonic(mnemonic: string, network: CardanoNetwork) {
-  if (!validateMnemonic(mnemonic)) throw new Error('Invalid mnemonic for Lucid');
+  const normalized = normalizeMnemonic(mnemonic);
   const blockfrostKey = getBlockfrostApiKey(network);
   const blockfrostUrl = getBlockfrostUrl(network);
   if (!blockfrostKey) throw new Error('Blockfrost API key not set for network: ' + network);
@@ -87,10 +107,8 @@ async function initLucidFromMnemonic(mnemonic: string, network: CardanoNetwork) 
     new Blockfrost(blockfrostUrl, blockfrostKey),
     network === 'mainnet' ? 'Mainnet' : network === 'preprod' ? 'Preprod' : 'Preview'
   );
-  const normalized = normalizeMnemonic(mnemonic);
-  const { mnemonicToSeedSync } = await import('bip39');
-  const seedBuffer = mnemonicToSeedSync(normalized);
-  lucid.selectWalletFromSeed(seedBuffer.toString('hex'));
+  
+  lucid.selectWalletFromSeed(normalized);
   return lucid;
 }
 
@@ -103,12 +121,12 @@ export async function registerStakeLucid(
     const rewardAddress = await lucid.wallet.rewardAddress();
     if (!rewardAddress) return { success: false, error: 'Could not derive reward address' };
 
-    const tx = (await lucid.newTx().registerStake(rewardAddress).complete()) as any;
+    const tx = await lucid.newTx().registerStake(rewardAddress).complete();
     const signed = await tx.sign().complete();
     const txHash = await signed.submit();
     return { success: true, txHash };
-  } catch (err) {
-    const msg = typeof err === 'object' && err && 'message' in err ? (err as any).message : String(err);
+  } catch (err: any) {
+    const msg = err?.message || String(err);
     return { success: false, error: 'Lucid registerStake failed: ' + msg, _debug: err };
   }
 }
@@ -123,16 +141,15 @@ export async function withdrawRewardsLucid(
     if (!rewardAddress) return { success: false, error: 'Could not derive reward address' };
 
     const delegation = await lucid.wallet.getDelegation();
-    const rewards = delegation?.rewards as any;
-    const rewardsStr = rewards != null ? String(rewards) : '';
-    if (!rewards || rewardsStr === '0') return { success: false, error: 'No rewards available to withdraw' };
+    const rewards = delegation?.rewards || BigInt(0);
+    if (rewards === BigInt(0)) return { success: false, error: 'No rewards available to withdraw' };
 
-    const tx = (await lucid.newTx().withdraw(rewardAddress, rewards).complete()) as any;
+    const tx = await lucid.newTx().withdraw(rewardAddress, rewards).complete();
     const signed = await tx.sign().complete();
     const txHash = await signed.submit();
     return { success: true, txHash };
-  } catch (err) {
-    const msg = typeof err === 'object' && err && 'message' in err ? (err as any).message : String(err);
+  } catch (err: any) {
+    const msg = err?.message || String(err);
     return { success: false, error: 'Lucid withdraw failed: ' + msg, _debug: err };
   }
 }
@@ -146,15 +163,12 @@ export async function deregisterStakeLucid(
     const rewardAddress = await lucid.wallet.rewardAddress();
     if (!rewardAddress) return { success: false, error: 'Could not derive reward address' };
 
-    const tx = (await lucid.newTx().deregisterStake(rewardAddress).complete()) as any;
+    const tx = await lucid.newTx().deregisterStake(rewardAddress).complete();
     const signed = await tx.sign().complete();
     const txHash = await signed.submit();
     return { success: true, txHash };
-  } catch (err) {
-    const msg = typeof err === 'object' && err && 'message' in err ? (err as any).message : String(err);
+  } catch (err: any) {
+    const msg = err?.message || String(err);
     return { success: false, error: 'Lucid deregisterStake failed: ' + msg, _debug: err };
   }
 }
-
-
-

@@ -16,6 +16,7 @@
   "dependencies": {
     "@meshsdk/core": "^1.9.0-beta.90",
     "@meshsdk/react": "^1.9.0-beta.90",
+    "@supabase/supabase-js": "^2.89.0",
     "@twa-dev/sdk": "^8.0.2",
     "@types/qrcode": "^1.5.6",
     "@utxorpc/sdk": "^0.7.0",

@@ -1,12 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { delegateToPool } from '@/lib/cardano/wallet';
 
+// For non-sensitive diagnostic logging
+import { validateMnemonic, getMnemonicWordCount } from '@/lib/cardano/mnemonic';
+
 export async function POST(req: NextRequest) {
   try {
     const { mnemonic, poolId, network } = await req.json();
     if (!mnemonic || !poolId || !network) {
       return NextResponse.json({ success: false, error: 'Missing required fields' }, { status: 400 });
     }
+    // Diagnostic: log non-sensitive mnemonic metadata
+    try {
+      const wordCount = getMnemonicWordCount(String(mnemonic));
+      const valid = validateMnemonic(String(mnemonic));
+      // eslint-disable-next-line no-console
+      console.info('[api/delegate] incoming', { poolId, network, hasMnemonic: !!mnemonic, wordCount, valid });
+    } catch (e) {
+      // ignore
+    }
+
     // Create wallet instance from mnemonic (server-only)
     const { createWalletFromMnemonic } = await import('@/lib/cardano/wallet');
     const walletInstance = await createWalletFromMnemonic(mnemonic, network);
