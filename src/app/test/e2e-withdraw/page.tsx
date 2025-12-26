@@ -1,7 +1,6 @@
 "use client";
 
 import React from "react";
-import { withdrawRewards } from "@/lib/cardano/wallet";
 import { createWalletFromMnemonic } from '@/lib/cardano';
 
 export default function E2EWithdrawPage() {
@@ -12,6 +11,8 @@ export default function E2EWithdrawPage() {
     const run = async () => {
       setRunning(true);
       try {
+        const { withdrawRewards } = await import("@/lib/cardano/wallet");
+        
         // Create Mesh wallet instance and get addresses from it
         const mnemonic = 'test test test test test test test test test test test junk';
         const instance = await createWalletFromMnemonic(mnemonic);

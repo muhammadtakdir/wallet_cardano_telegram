@@ -20,7 +20,6 @@ import {
   type EpochReward,
 } from "@/lib/cardano";
 import { verifyPin, getStoredWalletForVerification, decryptWallet } from "@/lib/storage/encryption";
-import { delegateToPoolLucid, withdrawRewardsLucid, deregisterStakeLucid } from '@/lib/cardano/lucid-stake';
 
 export interface StakingScreenProps {
   onBack: () => void;
@@ -257,6 +256,9 @@ export const StakingScreen: React.FC<StakingScreenProps> = ({ onBack }) => {
       if (!mnemonic) {
         throw new Error("Failed to authenticate wallet. Please try again.");
       }
+
+      // Dynamic import to avoid bundling WASM dependencies
+      const { delegateToPoolLucid, withdrawRewardsLucid, deregisterStakeLucid } = await import('@/lib/cardano/lucid-stake');
 
       let result: { success: boolean; txHash?: string; error?: string; _debug?: any };
 

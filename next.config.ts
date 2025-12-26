@@ -1,12 +1,14 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Use webpack for MeshJS/Lucid WASM support
-  webpack: (config) => {
+  // Use webpack for MeshJS WASM support (Turbopack doesn't fully support WASM yet)
+  // Enable WebAssembly support for MeshJS/Cardano libraries
+  webpack: (config, { isServer }) => {
     // Enable WASM experiments
     config.experiments = {
       ...config.experiments,
       asyncWebAssembly: true,
+      syncWebAssembly: true,
       layers: true,
       topLevelAwait: true,
     };
@@ -21,21 +23,30 @@ const nextConfig: NextConfig = {
     config.output.webassemblyModuleFilename = "static/wasm/[modulehash].wasm";
 
     // Fix for packages that use fs, net, tls (common in crypto libraries)
-    config.resolve.fallback = {
-      ...config.resolve.fallback,
-      fs: false,
-      net: false,
-      tls: false,
-      crypto: false,
-    };
+    if (!isServer) {
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        fs: false,
+        net: false,
+        tls: false,
+        crypto: false,
+      };
+    }
+
+    // Ignore WASM files in server-side rendering to prevent issues
+    if (isServer) {
+      config.externals = config.externals || [];
+      config.externals.push({
+        "@meshsdk/core": "commonjs @meshsdk/core",
+        "lucid-cardano": "commonjs lucid-cardano",
+      });
+    }
 
     return config;
   },
 
   // Empty turbopack config to allow webpack config
   turbopack: {},
-
-  serverExternalPackages: ["@meshsdk/core", "lucid-cardano"],
 
   // Required for Telegram WebApp and external API calls
   async headers() {
@@ -65,6 +76,8 @@ const nextConfig: NextConfig = {
   // Vercel optimization
   reactStrictMode: true,
 
+  serverExternalPackages: ["@meshsdk/core", "lucid-cardano"],
+
   // Allow images from IPFS and other sources
   images: {
     remotePatterns: [
@@ -80,9 +93,6 @@ const nextConfig: NextConfig = {
       },
     ],
   },
-  
-  // Suppress warnings
-  serverExternalPackages: ["@meshsdk/core", "lucid-cardano"],
 };
 
 export default nextConfig;

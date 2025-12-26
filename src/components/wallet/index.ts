@@ -37,6 +37,3 @@ export type { CurrencySelectorProps } from "./CurrencySelector";
 
 export { CollateralManager } from "./CollateralManager";
 export type { CollateralManagerProps } from "./CollateralManager";
-
-export { StakingScreen } from "./StakingScreen";
-export type { StakingScreenProps } from "./StakingScreen";

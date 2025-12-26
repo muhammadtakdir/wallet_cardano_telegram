@@ -29,18 +29,19 @@ export async function delegateToPoolLucid(
       return { success: false, error: 'Blockfrost API key not set for network: ' + network };
     }
 
-    // 3. Init Lucid (Dynamic Import)
+    // 3. Init Lucid (Dynamic Import to fix WASM issues)
     const { Lucid, Blockfrost } = await import('lucid-cardano');
     const lucid = await Lucid.new(
       new Blockfrost(blockfrostUrl, blockfrostKey),
       network === 'mainnet' ? 'Mainnet' : network === 'preprod' ? 'Preprod' : 'Preview'
     );
 
-    // 4. Restore wallet from mnemonic
+    // 4. Restore wallet from mnemonic using Lucid's selectWalletFromSeed
+    // In Lucid 0.10.x, selectWalletFromSeed actually takes the mnemonic string.
     try {
       lucid.selectWalletFromSeed(normalized);
     } catch (mnemonicErr: any) {
-      console.error('[lucid-stake] selectWalletFromMnemonic failed:', mnemonicErr);
+      console.error('[lucid-stake] selectWalletFromSeed failed:', mnemonicErr);
       return { 
         success: false, 
         error: 'Invalid mnemonic: ' + (mnemonicErr?.message || String(mnemonicErr)),
@@ -64,6 +65,7 @@ export async function delegateToPoolLucid(
         isRegistered = data.active;
       }
     } catch (e) {
+      // Ignore error, assume not registered if check fails
       console.warn('[lucid-stake] Failed to check registration status', e);
     }
 
