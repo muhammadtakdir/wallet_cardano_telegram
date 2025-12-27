@@ -58,7 +58,7 @@ export async function POST(request: Request) {
 
     const userData = JSON.parse(userStr);
     const telegramId = userData.id;
-    const username = userData.username;
+    // const username = userData.username; // Removed to avoid DB schema mismatch
 
     if (!isValid && process.env.NODE_ENV === 'production') {
        return NextResponse.json({ error: 'Invalid Telegram data hash' }, { status: 403 });
@@ -80,14 +80,14 @@ export async function POST(request: Request) {
     let points = 0;
     
     if (!existingUser) {
-      console.log(`[API] New user detected: ${telegramId}. Wallet provided: ${!!walletAddress}`);
+      console.log(`[API v2] New user detected: ${telegramId}. Wallet provided: ${!!walletAddress}`);
       // New User: ONLY insert if we have a wallet address
       if (!walletAddress) {
-        console.log(`[API] Skipping insert for ${telegramId} - Pre-check only`);
+        console.log(`[API v2] Skipping insert for ${telegramId} - Pre-check only`);
         return NextResponse.json({ success: true, registered: false, points: 0 });
       }
 
-      console.log(`[API] Registering new user ${telegramId} with wallet ${walletAddress}`);
+      console.log(`[API v2] Registering new user ${telegramId} with wallet ${walletAddress}`);
       points = 100;
       const { error: insertError } = await supabaseAdmin
         .from('users')
