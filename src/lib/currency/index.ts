@@ -125,7 +125,31 @@ export const fetchAdaPrice = async (): Promise<Record<FiatCurrency, number>> => 
 
     return prices;
   } catch (error) {
-    console.error("Error fetching ADA price:", error);
+    console.warn("CoinGecko failed, trying fallback...", error);
+    
+    // Fallback: CryptoCompare
+    try {
+      const ccResponse = await fetch(
+        "https://min-api.cryptocompare.com/data/price?fsym=ADA&tsyms=USD,EUR,JPY,IDR,CNY,ETB"
+      );
+      if (ccResponse.ok) {
+        const ccData = await ccResponse.json();
+        const prices: Record<FiatCurrency, number> = {
+          usd: ccData.USD || 0,
+          eur: ccData.EUR || 0,
+          jpy: ccData.JPY || 0,
+          idr: ccData.IDR || 0,
+          cny: ccData.CNY || 0,
+          etb: ccData.ETB || 0,
+        };
+        // Update cache with fallback data
+        priceCache = { prices, timestamp: Date.now() };
+        return prices;
+      }
+    } catch (e) {
+      console.error("All price APIs failed", e);
+    }
+
     // Return cached prices if available, otherwise zeros
     return priceCache?.prices || {
       usd: 0,
@@ -135,6 +159,37 @@ export const fetchAdaPrice = async (): Promise<Record<FiatCurrency, number>> => 
       cny: 0,
       etb: 0,
     };
+  }
+};
+
+/**
+ * Fetch prices for native tokens in ADA
+ * Uses MuesliSwap public API
+ */
+export const fetchTokenPrices = async (policyIds: string[]): Promise<Record<string, number>> => {
+  if (policyIds.length === 0) return {};
+  
+  try {
+    const response = await fetch("https://api.muesliswap.com/ticker");
+    if (!response.ok) return {};
+    
+    const data = await response.json();
+    const tokenPrices: Record<string, number> = {};
+    
+    // Map MuesliSwap data to policyId.assetName format or just policyId
+    // Note: MuesliSwap uses policyId.assetName format
+    policyIds.forEach(policyId => {
+      const tokenData = data.find((t: any) => t.base_id === policyId || t.quote_id === policyId);
+      if (tokenData) {
+        // Price is usually in base currency (ADA)
+        tokenPrices[policyId] = parseFloat(tokenData.last_price);
+      }
+    });
+    
+    return tokenPrices;
+  } catch (error) {
+    console.warn("Failed to fetch token prices", error);
+    return {};
   }
 };
 

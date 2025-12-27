@@ -81,6 +81,7 @@ export const BalanceCard: React.FC<BalanceCardProps> = ({
   const [isBalanceHidden, setIsBalanceHidden] = React.useState(false);
   const [currency, setCurrency] = React.useState<FiatCurrency>("usd");
   const [adaPrice, setAdaPrice] = React.useState<number>(0);
+  const [tokenPrices, setTokenPrices] = React.useState<Record<string, number>>({});
   const [showCurrencySelector, setShowCurrencySelector] = React.useState(false);
   const [isPriceLoading, setIsPriceLoading] = React.useState(true);
 
@@ -90,26 +91,32 @@ export const BalanceCard: React.FC<BalanceCardProps> = ({
     setCurrency(getSavedCurrency());
   }, []);
 
-  // Fetch ADA price
+  // Fetch ADA and Token prices
   React.useEffect(() => {
-    const loadPrice = async () => {
+    const loadPrices = async () => {
       setIsPriceLoading(true);
       try {
         const prices = await fetchAdaPrice();
-        console.log('[BalanceCard] Fetched prices:', prices);
         setAdaPrice(prices[currency] || 0);
+        
+        if (balance?.assets && balance.assets.length > 0) {
+          const policyIds = balance.assets.map(a => a.policyId || a.unit.slice(0, 56));
+          const { fetchTokenPrices } = await import("@/lib/currency");
+          const tPrices = await fetchTokenPrices(policyIds);
+          setTokenPrices(tPrices);
+        }
       } catch (err) {
-        console.warn('[BalanceCard] Failed to fetch price:', err);
+        console.warn('[BalanceCard] Failed to fetch prices:', err);
       } finally {
         setIsPriceLoading(false);
       }
     };
-    loadPrice();
+    loadPrices();
     
     // Refresh price every minute
-    const interval = setInterval(loadPrice, 60000);
+    const interval = setInterval(loadPrices, 60000);
     return () => clearInterval(interval);
-  }, [currency]);
+  }, [currency, balance?.assets]);
 
   const handleCopyAddress = async () => {
     if (!address) return;
@@ -357,11 +364,30 @@ export const BalanceCard: React.FC<BalanceCardProps> = ({
                           {isNFT ? "NFT" : "Token"}
                         </span>
                       </div>
-                      {asset.metadata?.ticker && (
-                        <span className="text-xs text-gray-500 dark:text-gray-400">
-                          ${asset.metadata.ticker}
-                        </span>
-                      )}
+                      <div className="flex items-center gap-2">
+                        {asset.metadata?.ticker && (
+                          <span className="text-xs text-gray-500 dark:text-gray-400">
+                            ${asset.metadata.ticker}
+                          </span>
+                        )}
+                        {/* Token Value in Fiat */}
+                        {!isBalanceHidden && adaPrice > 0 && (
+                          <>
+                            <span className="text-gray-300 dark:text-gray-600 text-[10px]">•</span>
+                            <span className="text-[10px] text-gray-500 font-medium">
+                              {(() => {
+                                const policyId = asset.policyId || asset.unit.slice(0, 56);
+                                const priceInAda = tokenPrices[policyId] || 0;
+                                if (priceInAda > 0) {
+                                  const totalAda = parseFloat(asset.quantity) * priceInAda;
+                                  return formatFiatValue(totalAda * adaPrice, currency);
+                                }
+                                return "Price N/A";
+                              })()}
+                            </span>
+                          </>
+                        )}
+                      </div>
                     </div>
                     
                     {/* Quantity & Arrow */}

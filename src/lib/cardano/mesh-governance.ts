@@ -35,6 +35,17 @@ export const delegateToDRepMesh = async (
     
     const rewardAddress = rewardAddresses[0];
 
+    console.log('[DRep] Debug Inputs:', {
+      rewardAddress,
+      rewardAddressType: typeof rewardAddress,
+      drepId,
+      drepIdType: typeof drepId
+    });
+
+    if (typeof drepId !== 'string' || !drepId) {
+        return { success: false, error: 'Invalid DRep ID format' };
+    }
+
     // Import BlockfrostProvider dynamically
     const { BlockfrostProvider } = await import('@meshsdk/core');
     let apiKey = '';

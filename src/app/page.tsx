@@ -533,27 +533,41 @@ export default function WalletPage() {
     const locked = isLockedOut();
     const lockoutSeconds = getLockoutRemaining();
     
+    // Fallback initials
+    const initials = user ? `${user.first_name?.[0] || ''}${user.last_name?.[0] || ''}`.toUpperCase() : '?';
+    
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-gray-50 dark:bg-gray-900">
-        {user?.photo_url ? (
-          <div className="relative mb-6">
+        <div className="relative mb-6">
+          {user?.photo_url ? (
             <img 
               src={user.photo_url} 
               alt={user.first_name} 
-              className="w-20 h-20 rounded-full border-4 border-white dark:border-gray-800 shadow-lg"
+              className="w-24 h-24 rounded-full border-4 border-white dark:border-gray-800 shadow-xl object-cover"
               onError={(e) => {
-                // Fallback if image fails to load
+                // If photo fails, hide img and show initials via parent
                 (e.target as HTMLImageElement).style.display = 'none';
-                // You could also replace src with a placeholder here
+                const parent = (e.target as HTMLImageElement).parentElement;
+                if (parent) {
+                  const fallback = parent.querySelector('.photo-fallback');
+                  if (fallback) (fallback as HTMLElement).style.display = 'flex';
+                }
               }}
             />
-            <div className="absolute -bottom-1 -right-1 bg-blue-600 rounded-full p-1.5 border-2 border-white dark:border-gray-800">
-              <WalletLogo className="w-4 h-4 text-white" />
-            </div>
+          ) : null}
+          
+          {/* Initials Fallback (Shown if no photo_url OR if img fails) */}
+          <div 
+            className="photo-fallback w-24 h-24 rounded-full bg-blue-600 flex items-center justify-center text-white text-2xl font-bold border-4 border-white dark:border-gray-800 shadow-xl"
+            style={{ display: user?.photo_url ? 'none' : 'flex' }}
+          >
+            {initials}
           </div>
-        ) : (
-          <WalletLogo className="w-16 h-16 mb-6 text-blue-600" />
-        )}
+
+          <div className="absolute -bottom-1 -right-1 bg-blue-600 rounded-full p-2 border-2 border-white dark:border-gray-800 shadow-md">
+            <WalletLogo className="w-5 h-5 text-white" />
+          </div>
+        </div>
         
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2 text-center">
           {user ? `Welcome back, ${user.first_name}` : "Welcome Back"}
