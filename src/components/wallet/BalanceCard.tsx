@@ -105,14 +105,6 @@ export const BalanceCard: React.FC<BalanceCardProps> = ({
     return () => clearInterval(interval);
   }, [currency]);
 
-  // Debug logging
-  React.useEffect(() => {
-    console.log("=== BalanceCard Debug ===");
-    console.log("balance:", balance);
-    console.log("balance?.ada:", balance?.ada, typeof balance?.ada);
-    console.log("=== End BalanceCard Debug ===");
-  }, [balance, address, network]);
-
   const handleCopyAddress = async () => {
     if (!address) return;
     

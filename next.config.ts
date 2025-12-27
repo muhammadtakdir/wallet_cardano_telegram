@@ -58,10 +58,27 @@ const nextConfig: NextConfig = {
 
   // Required for Telegram WebApp and external API calls
   async headers() {
+    const cspHeader = `
+      default-src 'self';
+      script-src 'self' 'unsafe-eval' 'unsafe-inline' https://telegram.org https://app.telegram.org;
+      style-src 'self' 'unsafe-inline';
+      img-src 'self' blob: data: https://ipfs.io https://gateway.pinata.cloud https://*.blockfrost.io;
+      font-src 'self';
+      object-src 'none';
+      base-uri 'self';
+      form-action 'self';
+      frame-ancestors https://web.telegram.org https://*.telegram.org;
+      connect-src 'self' https://*.blockfrost.io https://*.supabase.co wss://*.supabase.co;
+    `.replace(/\s{2,}/g, " ").trim();
+
     return [
       {
         source: "/:path*",
         headers: [
+          {
+            key: "Content-Security-Policy",
+            value: cspHeader,
+          },
           {
             key: "Cross-Origin-Embedder-Policy",
             value: "credentialless",

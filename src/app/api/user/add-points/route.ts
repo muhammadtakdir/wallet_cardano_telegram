@@ -12,6 +12,14 @@ function verifyTelegramWebAppData(telegramInitData: string): boolean {
     .sort((a, b) => a[0].localeCompare(b[0]))
     .map(([key, value]) => `${key}=${value}`)
     .join('\n');
+  
+  // Check auth_date to prevent replay attacks (allow 24 hours window)
+  const authDate = parseInt(urlParams.get('auth_date') || '0', 10);
+  const now = Math.floor(Date.now() / 1000);
+  if (now - authDate > 86400) {
+    return false;
+  }
+
   const secretKey = crypto
     .createHmac('sha256', 'WebAppData')
     .update(process.env.TELEGRAM_BOT_TOKEN || '')

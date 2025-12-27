@@ -40,29 +40,6 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
     changeNetwork,
   } = useWalletStore();
 
-  // Debug logging
-  React.useEffect(() => {
-    console.log("=== WalletDashboard Debug ===");
-    debugLogObject("WalletData", {
-      walletAddress,
-      walletName,
-      balanceAda: balance?.ada,
-      balanceLovelace: balance?.lovelace,
-      balanceAssets: balance?.assets,
-      transactionsCount: transactions?.length,
-      network,
-      isLoading,
-      walletsCount: wallets?.length,
-    });
-    
-    // Check wallets array contents
-    if (wallets && wallets.length > 0) {
-      console.log("=== First Wallet Details ===");
-      debugLogObject("Wallet[0]", wallets[0] as unknown as Record<string, unknown>);
-    }
-    console.log("=== End Debug ===");
-  }, [walletAddress, walletName, balance, transactions, network, isLoading, wallets]);
-
   const { isInTelegram, hapticFeedback, showAlert, user, initData } = useTelegram();
 
   const [isRefreshing, setIsRefreshing] = React.useState(false);
@@ -240,7 +217,6 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
             size="lg"
             fullWidth
             onClick={() => {
-              console.log("Send button clicked");
               onSend?.();
             }}
             className="flex items-center justify-center gap-2"
@@ -253,7 +229,6 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
             size="lg"
             fullWidth
             onClick={() => {
-              console.log("Receive button clicked");
               onReceive?.();
             }}
             className="flex items-center justify-center gap-2"
@@ -266,7 +241,6 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
             size="lg"
             fullWidth
             onClick={() => {
-              console.log("Staking button clicked");
               onStaking?.();
             }}
             className="flex items-center justify-center gap-2"
