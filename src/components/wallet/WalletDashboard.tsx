@@ -68,6 +68,33 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
   const [isRefreshing, setIsRefreshing] = React.useState(false);
   const [showWalletSelector, setShowWalletSelector] = React.useState(false);
   const [showNetworkSelector, setShowNetworkSelector] = React.useState(false);
+  const prevBalanceRef = React.useRef<string | null>(null);
+
+  // Detect deposit and award points
+  React.useEffect(() => {
+    if (balance?.ada && prevBalanceRef.current !== null) {
+      const current = parseFloat(balance.ada);
+      const prev = parseFloat(prevBalanceRef.current);
+      if (current > prev + 5) {
+        // Balance increased by > 5 ADA, award points
+        if (initData) {
+          fetch("/api/user/add-points", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ initData, actionType: "deposit" }),
+          })
+          .then(res => res.json())
+          .then(data => {
+            console.log("Deposit points awarded:", data);
+          })
+          .catch(e => console.warn("Failed to award deposit points", e));
+        }
+      }
+    }
+    if (balance?.ada) {
+      prevBalanceRef.current = balance.ada;
+    }
+  }, [balance?.ada, initData]);
 
   // Refresh data on mount
   React.useEffect(() => {

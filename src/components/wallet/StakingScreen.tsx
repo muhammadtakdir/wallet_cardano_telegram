@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { Card, Button, PinInput } from "@/components/ui";
-import { useWalletStore } from "@/hooks";
+import { useWalletStore, useTelegram } from "@/hooks";
 import {
   getStakeAddressFromAddress,
   getStakingInfo,
@@ -29,6 +29,7 @@ type StakingStep = "overview" | "search" | "pool-detail" | "confirm" | "pin" | "
 
 export const StakingScreen: React.FC<StakingScreenProps> = ({ onBack }) => {
   const { walletAddress, activeWalletId, network } = useWalletStore();
+  const { initData } = useTelegram();
 
   // State
   const [step, setStep] = React.useState<StakingStep>("overview");
@@ -285,6 +286,22 @@ export const StakingScreen: React.FC<StakingScreenProps> = ({ onBack }) => {
       if (result.success && result.txHash) {
         setTxHash(result.txHash);
         setStep("success");
+
+        // Reward points for staking actions
+        try {
+          if (initData) {
+            await fetch("/api/user/add-points", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ 
+                initData, 
+                actionType: action === "delegate" ? "stake" : action === "undelegate" ? "undelegate" : "send" 
+              }),
+            });
+          }
+        } catch (e) {
+          console.warn("Failed to award action points", e);
+        }
       } else {
         // Jika ada _debug info, tampilkan di error agar user bisa copy
         let debugInfo = '';

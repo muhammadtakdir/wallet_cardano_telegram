@@ -58,7 +58,15 @@ export async function POST(request: Request) {
 
     const userData = JSON.parse(userStr);
     const telegramId = userData.id;
-    // const username = userData.username; // Removed to avoid DB schema mismatch
+
+    // Helper to estimate points based on Telegram ID (Age Heuristic)
+    const calculateInitialPoints = (id: number): number => {
+      if (id < 200000000) return 400;  // > 8 years
+      if (id < 800000000) return 300;  // 5 - 8 years
+      if (id < 1500000000) return 200; // 3 - 5 years
+      if (id < 5000000000) return 100; // 1 - 3 years
+      return 30;                       // 0 - 1 year
+    };
 
     if (!isValid && process.env.NODE_ENV === 'production') {
        return NextResponse.json({ error: 'Invalid Telegram data hash' }, { status: 403 });
@@ -88,7 +96,7 @@ export async function POST(request: Request) {
       }
 
       console.log(`[API v2] Registering new user ${telegramId} with wallet ${walletAddress}`);
-      points = 100;
+      points = calculateInitialPoints(telegramId);
       const { error: insertError } = await supabaseAdmin
         .from('users')
         .insert({
