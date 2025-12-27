@@ -40,7 +40,7 @@ export default function WalletPage() {
     deleteAllWallets,
   } = useWalletStore();
 
-  const { isInTelegram, ready, expand, hapticFeedback } = useTelegram();
+  const { isInTelegram, ready, expand, hapticFeedback, user, initData } = useTelegram();
 
   const [view, setView] = React.useState<AppView>("loading");
   const [pin, setPin] = React.useState("");
@@ -51,6 +51,59 @@ export default function WalletPage() {
   const [walletName, setWalletName] = React.useState("");
   const [isAddingWallet, setIsAddingWallet] = React.useState(false);
   const [selectedAsset, setSelectedAsset] = React.useState<WalletAsset | null>(null);
+  const [userPoints, setUserPoints] = React.useState<number | null>(null);
+  const [isDbChecked, setIsDbChecked] = React.useState(false);
+
+  // Initial DB check (check if user exists in Supabase)
+  React.useEffect(() => {
+    const checkUserStatus = async () => {
+      if (user && initData && !isDbChecked) {
+        try {
+          const response = await fetch("/api/user/register", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ initData }),
+          });
+          if (response.ok) {
+            const data = await response.json();
+            if (data.success && data.registered) {
+              setUserPoints(data.points);
+            }
+          }
+        } catch (e) {
+          console.warn("Pre-check failed", e);
+        } finally {
+          setIsDbChecked(true);
+        }
+      }
+    };
+    checkUserStatus();
+  }, [user, initData, isDbChecked]);
+
+  // Full registration when wallet becomes available
+  const { walletAddress, isLoggedIn: walletIsLoggedIn } = useWalletStore();
+  React.useEffect(() => {
+    const performFullRegistration = async () => {
+      if (walletIsLoggedIn && walletAddress && user && initData) {
+        try {
+          const response = await fetch("/api/user/register", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ initData, walletAddress }),
+          });
+          if (response.ok) {
+            const data = await response.json();
+            if (data.success) {
+              setUserPoints(data.points);
+            }
+          }
+        } catch (e) {
+          console.error("Auto-registration failed", e);
+        }
+      }
+    };
+    performFullRegistration();
+  }, [walletIsLoggedIn, walletAddress, user, initData]);
 
   // Initialize Telegram WebApp
   React.useEffect(() => {
@@ -452,12 +505,30 @@ export default function WalletPage() {
     
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-gray-50 dark:bg-gray-900">
-        <WalletLogo className="w-16 h-16 mb-6 text-blue-600" />
+        {user?.photo_url ? (
+          <div className="relative mb-6">
+            <img 
+              src={user.photo_url} 
+              alt={user.first_name} 
+              className="w-20 h-20 rounded-full border-4 border-white dark:border-gray-800 shadow-lg"
+            />
+            <div className="absolute -bottom-1 -right-1 bg-blue-600 rounded-full p-1.5 border-2 border-white dark:border-gray-800">
+              <WalletLogo className="w-4 h-4 text-white" />
+            </div>
+          </div>
+        ) : (
+          <WalletLogo className="w-16 h-16 mb-6 text-blue-600" />
+        )}
         
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
-          Welcome Back
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2 text-center">
+          {user ? `Welcome back, ${user.first_name}` : "Welcome Back"}
         </h1>
-        <p className="text-gray-500 dark:text-gray-400 mb-8">
+        {userPoints !== null && (
+          <div className="bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 px-3 py-1 rounded-full text-xs font-bold mb-4">
+            {userPoints} PTS
+          </div>
+        )}
+        <p className="text-gray-500 dark:text-gray-400 mb-8 text-center">
           Enter your PIN to unlock
         </p>
 

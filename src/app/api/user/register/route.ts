@@ -36,9 +36,9 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { initData, walletAddress } = body;
 
-    if (!initData || !walletAddress) {
+    if (!initData) {
       return NextResponse.json(
-        { error: 'Missing required fields: initData or walletAddress' },
+        { error: 'Missing required fields: initData' },
         { status: 400 }
       );
     }
@@ -80,7 +80,11 @@ export async function POST(request: Request) {
     let points = 0;
     
     if (!existingUser) {
-      // New User: Insert with 100 points
+      // New User: ONLY insert if we have a wallet address
+      if (!walletAddress) {
+        return NextResponse.json({ success: true, registered: false, points: 0 });
+      }
+
       points = 100;
       const { error: insertError } = await supabaseAdmin
         .from('users')
@@ -97,9 +101,9 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'Failed to register user' }, { status: 500 });
       }
     } else {
-      // Existing User: Update wallet if different, keep points
+      // Existing User: Update wallet if provided and different, keep points
       points = existingUser.points;
-      if (existingUser.wallet_address !== walletAddress) {
+      if (walletAddress && existingUser.wallet_address !== walletAddress) {
         const { error: updateError } = await supabaseAdmin
           .from('users')
           .update({ wallet_address: walletAddress, username: username }) // Update username too in case it changed
@@ -111,7 +115,7 @@ export async function POST(request: Request) {
       }
     }
 
-    return NextResponse.json({ success: true, points });
+    return NextResponse.json({ success: true, registered: true, points });
 
   } catch (error) {
     console.error('Registration API error:', error);

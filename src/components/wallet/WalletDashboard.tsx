@@ -67,37 +67,31 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
   const [showWalletSelector, setShowWalletSelector] = React.useState(false);
   const [showNetworkSelector, setShowNetworkSelector] = React.useState(false);
   const [userPoints, setUserPoints] = React.useState<number | null>(null);
-  const registeredRef = React.useRef(false);
 
-  // Register user (bind wallet)
+  // Load points from global state/props or fetch if needed
+  // For now, we fetch points when dashboard mounts to ensure latest
   React.useEffect(() => {
-    const registerUser = async () => {
-      if (walletAddress && user && initData && !registeredRef.current) {
-        registeredRef.current = true; // Prevent double registration
+    const fetchPoints = async () => {
+      if (user && initData) {
         try {
           const response = await fetch("/api/user/register", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              initData,
-              walletAddress,
-            }),
+            body: JSON.stringify({ initData }),
           });
-          
           if (response.ok) {
             const data = await response.json();
-            if (data.success && typeof data.points === "number") {
+            if (data.success) {
               setUserPoints(data.points);
             }
           }
-        } catch (error) {
-          console.error("User registration failed:", error);
+        } catch (e) {
+          console.error("Failed to fetch points", e);
         }
       }
     };
-
-    registerUser();
-  }, [walletAddress, user, initData]);
+    fetchPoints();
+  }, [user, initData]);
 
   // Refresh data on mount
   React.useEffect(() => {
