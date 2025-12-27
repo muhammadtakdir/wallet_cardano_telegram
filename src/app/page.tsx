@@ -69,6 +69,9 @@ export default function WalletPage() {
             if (data.success && data.registered) {
               setUserPoints(data.points);
             }
+          } else {
+             const err = await response.json();
+             console.warn("Pre-check failed:", err);
           }
         } catch (e) {
           console.warn("Pre-check failed", e);
@@ -95,6 +98,21 @@ export default function WalletPage() {
             const data = await response.json();
             if (data.success) {
               setUserPoints(data.points);
+            }
+          } else {
+            const errData = await response.json();
+            console.error("Registration failed:", errData);
+            if (isInTelegram) {
+              // Show specific error to help debugging
+              const msg = errData.error || "Registration failed";
+              if (msg.includes("Telegram data hash")) {
+                alert("Setup Error: TELEGRAM_BOT_TOKEN is missing or invalid on server.");
+              } else if (msg.includes("Database")) {
+                alert("Setup Error: Supabase credentials missing on server.");
+              } else {
+                // Only show generic errors in dev, or subtle one in prod
+                console.warn("Reg error:", msg);
+              }
             }
           }
         } catch (e) {
