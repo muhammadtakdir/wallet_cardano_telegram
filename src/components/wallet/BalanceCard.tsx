@@ -81,6 +81,7 @@ export const BalanceCard: React.FC<BalanceCardProps> = ({
   const [isBalanceHidden, setIsBalanceHidden] = React.useState(false);
   const [currency, setCurrency] = React.useState<FiatCurrency>("usd");
   const [adaPrice, setAdaPrice] = React.useState<number>(0);
+  const [adaPriceChange, setAdaPriceChange] = React.useState<number>(0);
   const [tokenPrices, setTokenPrices] = React.useState<Record<string, number>>({});
   const [showCurrencySelector, setShowCurrencySelector] = React.useState(false);
   const [isPriceLoading, setIsPriceLoading] = React.useState(true);
@@ -99,9 +100,12 @@ export const BalanceCard: React.FC<BalanceCardProps> = ({
         const prices = await fetchAdaPrice();
         setAdaPrice(prices[currency] || 0);
         
+        const { getAdaPriceChange, fetchTokenPrices } = await import("@/lib/currency");
+        const change = await getAdaPriceChange(currency);
+        setAdaPriceChange(change);
+        
         if (balance?.assets && balance.assets.length > 0) {
           const policyIds = balance.assets.map(a => a.policyId || a.unit.slice(0, 56));
-          const { fetchTokenPrices } = await import("@/lib/currency");
           const tPrices = await fetchTokenPrices(policyIds);
           setTokenPrices(tPrices);
         }
@@ -248,8 +252,13 @@ export const BalanceCard: React.FC<BalanceCardProps> = ({
                 ) : isBalanceHidden ? (
                   <span>{currencyInfo?.flag} ••••••</span>
                 ) : (
-                  <span>
+                  <span className="flex items-center gap-1">
                     {currencyInfo?.flag} ≈ {formatFiatValue(fiatValue, currency)}
+                    {adaPriceChange !== 0 && (
+                      <span className={`inline-flex items-center font-bold text-[10px] ml-1 ${adaPriceChange > 0 ? 'text-green-500' : 'text-red-500'}`}>
+                        {adaPriceChange > 0 ? '▲' : '▼'} {Math.abs(adaPriceChange).toFixed(2)}%
+                      </span>
+                    )}
                   </span>
                 )}
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
