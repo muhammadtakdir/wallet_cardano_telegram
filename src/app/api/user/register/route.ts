@@ -94,7 +94,6 @@ export async function POST(request: Request) {
         .insert({
           tg_user_id: telegramId,
           wallet_address: walletAddress,
-          username: username,
           points: points,
           joined_at: new Date().toISOString(),
         });
@@ -109,7 +108,7 @@ export async function POST(request: Request) {
       if (walletAddress && existingUser.wallet_address !== walletAddress) {
         const { error: updateError } = await supabaseAdmin
           .from('users')
-          .update({ wallet_address: walletAddress, username: username }) // Update username too in case it changed
+          .update({ wallet_address: walletAddress }) 
           .eq('tg_user_id', telegramId);
           
         if (updateError) {
