@@ -535,6 +535,7 @@ export default function WalletPage() {
     
     // Fallback initials
     const initials = user ? `${user.first_name?.[0] || ''}${user.last_name?.[0] || ''}`.toUpperCase() : '?';
+    console.log('[Page] Profile Photo URL:', user?.photo_url);
     
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-gray-50 dark:bg-gray-900">
@@ -543,14 +544,14 @@ export default function WalletPage() {
             <img 
               src={user.photo_url} 
               alt={user.first_name} 
-              className="w-24 h-24 rounded-full border-4 border-white dark:border-gray-800 shadow-xl object-cover"
+              className="w-24 h-24 rounded-full border-4 border-white dark:border-gray-800 shadow-xl object-cover block"
               onError={(e) => {
-                // If photo fails, hide img and show initials via parent
+                console.warn("Profile photo failed to load, showing fallback");
                 (e.target as HTMLImageElement).style.display = 'none';
                 const parent = (e.target as HTMLImageElement).parentElement;
                 if (parent) {
                   const fallback = parent.querySelector('.photo-fallback');
-                  if (fallback) (fallback as HTMLElement).style.display = 'flex';
+                  if (fallback) (fallback as HTMLElement).style.setProperty('display', 'flex', 'important');
                 }
               }}
             />

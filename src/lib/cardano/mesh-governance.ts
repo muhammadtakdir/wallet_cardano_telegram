@@ -95,8 +95,9 @@ export const delegateToDRepMesh = async (
     
     // In newer Mesh versions:
     if (typeof txBuilder.voteDelegationCertificate === 'function') {
-       // @ts-ignore - Mesh SDK beta types might require DRep object or specific union type
-       txBuilder.voteDelegationCertificate(rewardAddress, { drepId: drepId }); 
+       console.log('[DRep] Using voteDelegationCertificate with:', { rewardAddress, dRepId: drepId });
+       // @ts-ignore - Mesh SDK beta types might have different key case, but documentation says dRepId
+       txBuilder.voteDelegationCertificate({ dRepId: drepId }, rewardAddress); 
     } else {
        console.error('[DRep] voteDelegationCertificate method missing on txBuilder');
        return { success: false, error: 'Mesh SDK version incompatible with DRep delegation' };

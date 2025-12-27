@@ -68,7 +68,7 @@ const nextConfig: NextConfig = {
       base-uri 'self';
       form-action 'self';
       frame-ancestors https://web.telegram.org https://*.telegram.org;
-      connect-src 'self' https://*.blockfrost.io https://*.supabase.co wss://*.supabase.co;
+      connect-src 'self' https://*.blockfrost.io https://*.supabase.co wss://*.supabase.co https://api.coingecko.com https://min-api.cryptocompare.com https://api.muesliswap.com;
     `.replace(/\s{2,}/g, " ").trim();
 
     return [
