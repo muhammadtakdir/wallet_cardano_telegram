@@ -111,8 +111,9 @@ export const delegateToDRepMesh = async (
 
     console.log('[DRep] Transaction built successfully. Signing...');
 
-    // Partial sign true for stake key witnessing
-    const signed = await wallet.signTx(unsignedTx, true);
+    // Sign with ALL keys (partialSign = false) to ensure stake key witness is included
+    // MissingVKeyWitnessesUTXOW usually means stake key didn't sign
+    const signed = await wallet.signTx(unsignedTx);
     
     console.log('[DRep] Transaction signed. Submitting...');
     const txHash = await wallet.submitTx(signed);
