@@ -48,6 +48,12 @@ export default function WalletPage() {
 
   const { isInTelegram, ready, expand, hapticFeedback, user, initData } = useTelegram();
 
+  React.useEffect(() => {
+    if (user) {
+      console.log('[Page] Telegram User:', user);
+    }
+  }, [user]);
+
   const [view, setView] = React.useState<AppView>("loading");
   const [pin, setPin] = React.useState("");
   const [confirmPin, setConfirmPin] = React.useState("");
@@ -535,6 +541,11 @@ export default function WalletPage() {
               src={user.photo_url} 
               alt={user.first_name} 
               className="w-20 h-20 rounded-full border-4 border-white dark:border-gray-800 shadow-lg"
+              onError={(e) => {
+                // Fallback if image fails to load
+                (e.target as HTMLImageElement).style.display = 'none';
+                // You could also replace src with a placeholder here
+              }}
             />
             <div className="absolute -bottom-1 -right-1 bg-blue-600 rounded-full p-1.5 border-2 border-white dark:border-gray-800">
               <WalletLogo className="w-4 h-4 text-white" />

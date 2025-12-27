@@ -11,10 +11,17 @@ export const delegateToDRepMesh = async (
   drepId: string,
   network: CardanoNetwork
 ): Promise<{ success: boolean; txHash?: string; error?: string; _debug?: any }> => {
+  console.log('[DRep] Starting delegation to:', drepId);
   try {
     const utxos = await wallet.getUtxos();
     const changeAddress = await wallet.getChangeAddress();
     const rewardAddresses = await wallet.getRewardAddresses();
+
+    console.log('[DRep] Wallet state:', { 
+      utxosCount: utxos?.length, 
+      changeAddress, 
+      rewardAddress: rewardAddresses?.[0] 
+    });
 
     if (!utxos || utxos.length === 0) {
       return { success: false, error: 'No UTxOs available in wallet' };
@@ -43,11 +50,10 @@ export const delegateToDRepMesh = async (
     const provider = new BlockfrostProvider(apiKey);
     
     // Create TxBuilder
+    console.log('[DRep] Initializing TxBuilder...');
     const txBuilder = new MeshTxBuilder({ fetcher: provider, submitter: provider });
 
-    // Check if stake key is registered (active) - Reuse logic or assume active if delegating vote?
-    // Usually, you need a registered stake key to delegate vote.
-    // If not registered, we should register it.
+    // Check if stake key is registered (active)
     let stakeKeyActive = false;
     try {
         const baseUrl = network === 'mainnet'
@@ -61,42 +67,51 @@ export const delegateToDRepMesh = async (
             if (resp.ok) {
                 const data = await resp.json();
                 stakeKeyActive = !!data.active;
+                console.log('[DRep] Stake key active:', stakeKeyActive);
             }
         }
-    } catch {}
+    } catch (e) {
+        console.warn('[DRep] Failed to check stake key status:', e);
+    }
 
     if (!stakeKeyActive) {
+        console.log('[DRep] Registering stake certificate...');
         txBuilder.registerStakeCertificate(rewardAddress);
     }
 
     // Delegate vote to DRep
-    // Note: The method might be voteDelegationCertificate or similar depending on Mesh version
-    // Checking Mesh docs, it is often voteDelegationCertificate(stakeCredential, drepId)
-    // Or voteDelegation(stakeCredential, drepId)
-    // We try the standard builder method.
+    console.log('[DRep] Adding vote delegation certificate...');
     
     // In newer Mesh versions:
     if (typeof txBuilder.voteDelegationCertificate === 'function') {
        // @ts-ignore - Mesh SDK beta types might require DRep object or specific union type
        txBuilder.voteDelegationCertificate(rewardAddress, { drepId: drepId }); 
     } else {
-       // Fallback or error if method differs in this specific beta version
+       console.error('[DRep] voteDelegationCertificate method missing on txBuilder');
        return { success: false, error: 'Mesh SDK version incompatible with DRep delegation' };
     }
 
+    console.log('[DRep] Building transaction...');
     const unsignedTx = await txBuilder
       .changeAddress(changeAddress)
       .selectUtxosFrom(utxos)
       .complete();
 
+    console.log('[DRep] Transaction built successfully. Signing...');
+
     // Partial sign true for stake key witnessing
     const signed = await wallet.signTx(unsignedTx, true);
+    
+    console.log('[DRep] Transaction signed. Submitting...');
     const txHash = await wallet.submitTx(signed);
+    
+    console.log('[DRep] Submitted! Hash:', txHash);
 
     return { success: true, txHash };
 
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    return { success: false, error: message || 'DRep delegation failed' };
+    console.error('[DRep] Delegation Error:', error);
+    return { success: false, error: message || 'DRep delegation failed', _debug: error };
   }
 };

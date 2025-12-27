@@ -94,9 +94,15 @@ export const BalanceCard: React.FC<BalanceCardProps> = ({
   React.useEffect(() => {
     const loadPrice = async () => {
       setIsPriceLoading(true);
-      const prices = await fetchAdaPrice();
-      setAdaPrice(prices[currency] || 0);
-      setIsPriceLoading(false);
+      try {
+        const prices = await fetchAdaPrice();
+        console.log('[BalanceCard] Fetched prices:', prices);
+        setAdaPrice(prices[currency] || 0);
+      } catch (err) {
+        console.warn('[BalanceCard] Failed to fetch price:', err);
+      } finally {
+        setIsPriceLoading(false);
+      }
     };
     loadPrice();
     
