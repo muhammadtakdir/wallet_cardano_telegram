@@ -3,6 +3,9 @@
  */
 export type CardanoNetwork = "mainnet" | "preprod" | "preview";
 
+// Default DRep ID for delegation
+export const DEFAULT_DREP_ID = "drep1y20w8vxwd3venlvp0muxwzmdlr7a006dpz580czmaj422sqng6fkg";
+
 /**
  * Get current network from storage or environment
  */

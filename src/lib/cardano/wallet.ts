@@ -990,6 +990,73 @@ export const estimateTransactionFee = async (
 const DEFAULT_POOL_TICKER = "ADI";
 const DEFAULT_POOL_NAME = "Cardanesia";
 
+// ================================
+// GOVERNANCE / DREP FUNCTIONS
+// ================================
+
+export interface DRepInfo {
+  drepId: string;
+  view: string;
+  url?: string;
+  metadataHash?: string;
+  deposit: string;
+  active: boolean;
+  amount: string; // Live stake
+  name?: string; // Derived from metadata if available
+  ticker?: string;
+}
+
+/**
+ * Get DRep information from Blockfrost
+ */
+export const getDRepInfo = async (drepId: string): Promise<DRepInfo | null> => {
+  try {
+    const apiKey = getBlockfrostApiKey();
+    const baseUrl = getBlockfrostUrl();
+
+    if (!apiKey) return null;
+
+    // Fetch DRep details
+    const response = await fetch(`${baseUrl}/governance/dreps/${drepId}`, {
+      headers: { project_id: apiKey },
+    });
+
+    if (!response.ok) return null;
+
+    const data = await response.json();
+    
+    // Fetch metadata if hash/url exists (optional enhancement)
+    // For now returning basic info
+    
+    return {
+      drepId: data.drep_id,
+      view: data.hex,
+      url: data.url,
+      metadataHash: data.metadata_hash,
+      deposit: data.deposit,
+      active: data.active,
+      amount: data.amount,
+      name: "Unknown DRep", // Blockfrost basic endpoint might not return name directly without metadata parsing
+    };
+  } catch (error) {
+    console.warn("Error getting DRep info:", error);
+    return null;
+  }
+};
+
+/**
+ * Search DReps (Mock implementation or limited ID lookup)
+ * Real DRep search by name requires metadata indexer or specific Blockfrost endpoint
+ */
+export const searchDReps = async (query: string): Promise<DRepInfo[]> => {
+  // If query looks like a DRep ID, try to fetch it directly
+  if (query.startsWith("drep")) {
+    const info = await getDRepInfo(query);
+    return info ? [info] : [];
+  }
+  return [];
+};
+
 /**
  * Stake pool information
  */

@@ -14,6 +14,7 @@ interface WalletDashboardProps {
   onSettings?: () => void;
   onAddWallet?: () => void;
   onStaking?: () => void;
+  onGovernance?: () => void;
   onAssetClick?: (asset: WalletAsset) => void;
   points?: number | null;
 }
@@ -24,6 +25,7 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
   onSettings,
   onAddWallet,
   onStaking,
+  onGovernance,
   onAssetClick,
   points,
 }) => {
@@ -211,7 +213,7 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
         />
 
         {/* Action Buttons */}
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-4 gap-2">
           <Button
             variant="primary"
             size="lg"
@@ -219,10 +221,10 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
             onClick={() => {
               onSend?.();
             }}
-            className="flex items-center justify-center gap-2"
+            className="flex flex-col items-center justify-center gap-1 h-auto py-2 px-1"
           >
-            <SendIcon className="w-5 h-5" />
-            Send
+            <SendIcon className="w-6 h-6" />
+            <span className="text-xs">Send</span>
           </Button>
           <Button
             variant="outline"
@@ -231,10 +233,10 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
             onClick={() => {
               onReceive?.();
             }}
-            className="flex items-center justify-center gap-2"
+            className="flex flex-col items-center justify-center gap-1 h-auto py-2 px-1"
           >
-            <ReceiveIcon className="w-5 h-5" />
-            Receive
+            <ReceiveIcon className="w-6 h-6" />
+            <span className="text-xs">Receive</span>
           </Button>
           <Button
             variant="outline"
@@ -243,10 +245,22 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
             onClick={() => {
               onStaking?.();
             }}
-            className="flex items-center justify-center gap-2"
+            className="flex flex-col items-center justify-center gap-1 h-auto py-2 px-1"
           >
-            <StakeIcon className="w-5 h-5" />
-            Stake
+            <StakeIcon className="w-6 h-6" />
+            <span className="text-xs">Stake</span>
+          </Button>
+          <Button
+            variant="outline"
+            size="lg"
+            fullWidth
+            onClick={() => {
+              onGovernance?.();
+            }}
+            className="flex flex-col items-center justify-center gap-1 h-auto py-2 px-1"
+          >
+            <VoteIcon className="w-6 h-6" />
+            <span className="text-xs">Vote</span>
           </Button>
         </div>
 
@@ -361,6 +375,17 @@ const StakeIcon: React.FC<{ className?: string }> = ({ className }) => (
       strokeLinejoin="round"
       strokeWidth={2}
       d="M13 10V3L4 14h7v7l9-11h-7z"
+    />
+  </svg>
+);
+
+const VoteIcon: React.FC<{ className?: string }> = ({ className }) => (
+  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
     />
   </svg>
 );

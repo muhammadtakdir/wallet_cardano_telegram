@@ -171,3 +171,32 @@ export async function deregisterStakeLucid(
     return { success: false, error: 'Lucid deregisterStake failed: ' + msg, _debug: err };
   }
 }
+
+export async function delegateToDRepLucid(
+  mnemonic: string,
+  drepId: string,
+  network: CardanoNetwork
+): Promise<{ success: boolean; txHash?: string; error?: string; _debug?: any }> {
+  try {
+    const lucid = await initLucidFromMnemonic(mnemonic, network);
+    const rewardAddress = await lucid.wallet.rewardAddress();
+    if (!rewardAddress) return { success: false, error: 'Could not derive reward address' };
+
+    // Note: older Lucid versions might not support delegateToDRep.
+    // We cast to any to avoid TypeScript build errors for the missing property.
+    const txBuilder = lucid.newTx();
+    
+    if (typeof (txBuilder as any).delegateToDRep !== 'function') {
+      console.warn('delegateToDRep not supported in this Lucid version');
+      return { success: false, error: 'Governance features require Lucid upgrade (Conway era)' };
+    }
+
+    const tx = await (txBuilder as any).delegateToDRep(rewardAddress, drepId).complete();
+    const signed = await tx.sign().complete();
+    const txHash = await signed.submit();
+    return { success: true, txHash };
+  } catch (err: any) {
+    const msg = err?.message || String(err);
+    return { success: false, error: 'DRep delegation failed: ' + msg, _debug: err };
+  }
+}

@@ -15,7 +15,13 @@ const StakingScreen = dynamic(
   { ssr: false }
 );
 
-type AppView = "loading" | "setup" | "create" | "import" | "import-pin" | "backup" | "unlock" | "dashboard" | "send" | "receive" | "asset-detail" | "staking";
+// Dynamically import GovernanceScreen
+const GovernanceScreen = dynamic(
+  () => import("@/components/wallet/GovernanceScreen").then((mod) => mod.GovernanceScreen),
+  { ssr: false }
+);
+
+type AppView = "loading" | "setup" | "create" | "import" | "import-pin" | "backup" | "unlock" | "dashboard" | "send" | "receive" | "asset-detail" | "staking" | "governance";
 
 // Hydration safe hook - prevents SSR mismatch
 function useHydrated() {
@@ -651,6 +657,9 @@ export default function WalletPage() {
           console.log("page.tsx: onStaking called, setting view to staking");
           setView("staking");
         }}
+        onGovernance={() => {
+          setView("governance");
+        }}
         onAssetClick={(asset) => {
           console.log("page.tsx: onAssetClick called", asset);
           setSelectedAsset(asset);
@@ -665,6 +674,15 @@ export default function WalletPage() {
   if (view === "staking") {
     return (
       <StakingScreen
+        onBack={() => setView("dashboard")}
+      />
+    );
+  }
+
+  // Render governance
+  if (view === "governance") {
+    return (
+      <GovernanceScreen
         onBack={() => setView("dashboard")}
       />
     );
