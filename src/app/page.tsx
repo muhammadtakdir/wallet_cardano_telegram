@@ -656,6 +656,7 @@ export default function WalletPage() {
           setSelectedAsset(asset);
           setView("asset-detail");
         }}
+        points={userPoints}
       />
     );
   }

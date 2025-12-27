@@ -80,11 +80,14 @@ export async function POST(request: Request) {
     let points = 0;
     
     if (!existingUser) {
+      console.log(`[API] New user detected: ${telegramId}. Wallet provided: ${!!walletAddress}`);
       // New User: ONLY insert if we have a wallet address
       if (!walletAddress) {
+        console.log(`[API] Skipping insert for ${telegramId} - Pre-check only`);
         return NextResponse.json({ success: true, registered: false, points: 0 });
       }
 
+      console.log(`[API] Registering new user ${telegramId} with wallet ${walletAddress}`);
       points = 100;
       const { error: insertError } = await supabaseAdmin
         .from('users')

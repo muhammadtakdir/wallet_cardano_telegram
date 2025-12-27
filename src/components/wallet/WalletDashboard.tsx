@@ -15,6 +15,7 @@ interface WalletDashboardProps {
   onAddWallet?: () => void;
   onStaking?: () => void;
   onAssetClick?: (asset: WalletAsset) => void;
+  points?: number | null;
 }
 
 export const WalletDashboard: React.FC<WalletDashboardProps> = ({
@@ -24,6 +25,7 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
   onAddWallet,
   onStaking,
   onAssetClick,
+  points,
 }) => {
   const {
     walletAddress,
@@ -66,32 +68,6 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
   const [isRefreshing, setIsRefreshing] = React.useState(false);
   const [showWalletSelector, setShowWalletSelector] = React.useState(false);
   const [showNetworkSelector, setShowNetworkSelector] = React.useState(false);
-  const [userPoints, setUserPoints] = React.useState<number | null>(null);
-
-  // Load points from global state/props or fetch if needed
-  // For now, we fetch points when dashboard mounts to ensure latest
-  React.useEffect(() => {
-    const fetchPoints = async () => {
-      if (user && initData) {
-        try {
-          const response = await fetch("/api/user/register", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ initData }),
-          });
-          if (response.ok) {
-            const data = await response.json();
-            if (data.success) {
-              setUserPoints(data.points);
-            }
-          }
-        } catch (e) {
-          console.error("Failed to fetch points", e);
-        }
-      }
-    };
-    fetchPoints();
-  }, [user, initData]);
 
   // Refresh data on mount
   React.useEffect(() => {
@@ -152,9 +128,9 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
           <span className="font-medium truncate">
             Welcome, {safeString(user.first_name)}!
           </span>
-          {userPoints !== null && (
+          {points !== undefined && points !== null && (
             <span className="bg-blue-700 bg-opacity-50 px-2 py-0.5 rounded-full text-xs font-bold whitespace-nowrap">
-              {userPoints} PTS
+              {points} PTS
             </span>
           )}
         </div>
