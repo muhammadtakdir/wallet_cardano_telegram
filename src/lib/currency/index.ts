@@ -171,9 +171,13 @@ export const fetchTokenPrices = async (policyIds: string[]): Promise<Record<stri
   
   try {
     const response = await fetch("https://api.muesliswap.com/ticker");
-    if (!response.ok) return {};
+    if (!response.ok) {
+        console.warn('MuesliSwap API failed:', response.status);
+        return {};
+    }
     
     const data = await response.json();
+    console.log('[Currency] Token prices fetched:', data.length, 'tokens');
     const tokenPrices: Record<string, number> = {};
     
     // Map MuesliSwap data to policyId.assetName format or just policyId

@@ -47,6 +47,7 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
   const [isRefreshing, setIsRefreshing] = React.useState(false);
   const [showWalletSelector, setShowWalletSelector] = React.useState(false);
   const [showNetworkSelector, setShowNetworkSelector] = React.useState(false);
+  const [showAllTransactions, setShowAllTransactions] = React.useState(false);
   const prevBalanceRef = React.useRef<string | null>(null);
 
   // Detect deposit and award points
@@ -266,11 +267,21 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
 
         {/* Transaction History */}
         <section>
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">
-            Recent Transactions
-          </h2>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+              Recent Transactions
+            </h2>
+            {transactions && transactions.length > 3 && (
+              <button 
+                onClick={() => setShowAllTransactions(!showAllTransactions)}
+                className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
+              >
+                {showAllTransactions ? "Show Less" : "View All"}
+              </button>
+            )}
+          </div>
           <TransactionList
-            transactions={transactions}
+            transactions={showAllTransactions ? transactions : transactions.slice(0, 3)}
             walletAddress={walletAddress || undefined}
             isLoading={isLoading || isRefreshing}
           />

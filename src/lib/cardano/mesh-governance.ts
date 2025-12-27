@@ -64,6 +64,17 @@ export const delegateToDRepMesh = async (
     console.log('[DRep] Initializing TxBuilder...');
     const txBuilder = new MeshTxBuilder({ fetcher: provider, submitter: provider });
 
+    // Explicitly add stake key as required signer to ensure witnessing
+    try {
+        const stakeKeyHash = resolvePaymentKeyHash(rewardAddress);
+        if (stakeKeyHash) {
+            console.log('[DRep] Adding required signer (stake key):', stakeKeyHash);
+            txBuilder.requiredSignerHash(stakeKeyHash);
+        }
+    } catch (e) {
+        console.warn('[DRep] Failed to add required signer:', e);
+    }
+
     // Check if stake key is registered (active)
     let stakeKeyActive = false;
     try {
