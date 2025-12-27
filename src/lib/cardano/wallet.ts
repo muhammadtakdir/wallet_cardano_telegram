@@ -1085,6 +1085,7 @@ export interface StakingInfo {
   stakeAddress: string;
   active: boolean;
   poolId: string | null;
+  drepId?: string | null;
   poolTicker?: string;
   poolName?: string;
   availableRewards: string; // lovelace
@@ -1209,6 +1210,7 @@ export const getStakingInfo = async (stakeAddress: string): Promise<StakingInfo 
       stakeAddress,
       active: data.active,
       poolId: data.pool_id || null,
+      drepId: data.drep_id || null,
       poolTicker,
       poolName,
       availableRewards: data.withdrawable_amount || "0",

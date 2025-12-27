@@ -61,28 +61,46 @@ export const GovernanceScreen: React.FC<GovernanceScreenProps> = ({ onBack }) =>
     }
   };
 
-  const handleSearch = async () => {
-    if (!drepId) return;
+  const handleSearch = async (id?: string) => {
+    const targetId = id || drepId;
+    if (!targetId) return;
     setIsLoading(true);
     setError(null);
     try {
-      const info = await getDRepInfo(drepId);
+      const info = await getDRepInfo(targetId);
       if (info) {
         setSelectedDRep(info);
+        setStep("confirm");
+      } else if (targetId === DEFAULT_DREP_ID) {
+        // Fallback for default DRep if API fails
+        setSelectedDRep({
+          drepId: DEFAULT_DREP_ID,
+          view: DEFAULT_DREP_ID,
+          deposit: "0",
+          active: true,
+          amount: "0",
+          name: "Cardanesia DRep",
+        });
         setStep("confirm");
       } else {
         setError("DRep not found on chain. Please check the ID.");
       }
     } catch (e) {
-      setError("Error searching DRep.");
+      if (targetId === DEFAULT_DREP_ID) {
+        setSelectedDRep({
+          drepId: DEFAULT_DREP_ID,
+          view: DEFAULT_DREP_ID,
+          deposit: "0",
+          active: true,
+          amount: "0",
+          name: "Cardanesia DRep",
+        });
+        setStep("confirm");
+      } else {
+        setError("Error searching DRep.");
+      }
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const handleDelegateClick = () => {
-    if (selectedDRep) {
-      setStep("confirm");
     }
   };
 
@@ -160,7 +178,7 @@ export const GovernanceScreen: React.FC<GovernanceScreenProps> = ({ onBack }) =>
                 placeholder="drep1..."
                 className="flex-1 p-2 rounded border"
               />
-              <Button onClick={handleSearch} disabled={isLoading || !drepId}>Search</Button>
+              <Button onClick={() => handleSearch()} disabled={isLoading || !drepId}>Search</Button>
             </div>
           </div>
 
@@ -169,14 +187,16 @@ export const GovernanceScreen: React.FC<GovernanceScreenProps> = ({ onBack }) =>
             <p className="text-sm font-medium mb-2">Recommended DRep</p>
             <div className="bg-gray-50 dark:bg-gray-800 p-3 rounded-lg flex justify-between items-center">
               <div className="overflow-hidden">
-                <p className="font-bold text-blue-600">Cardanesia DRep</p>
+                <p className="font-bold text-blue-600">
+                  {selectedDRep && selectedDRep.drepId === DEFAULT_DREP_ID ? selectedDRep.name || "Cardanesia DRep" : "Cardanesia DRep"}
+                </p>
                 <p className="text-xs text-gray-500 font-mono truncate w-40">
                   {shortenAddress(DEFAULT_DREP_ID, 10)}
                 </p>
               </div>
               <Button size="sm" onClick={() => {
                 setDrepId(DEFAULT_DREP_ID);
-                handleSearch(); // Trigger search/confirm flow
+                handleSearch(DEFAULT_DREP_ID); // Pass ID directly
               }}>Select</Button>
             </div>
           </div>

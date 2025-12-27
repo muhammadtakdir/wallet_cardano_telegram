@@ -408,6 +408,21 @@ export const StakingScreen: React.FC<StakingScreenProps> = ({ onBack }) => {
               </div>
             </Card>
 
+            {/* DRep Warning */}
+            {stakingInfo?.active && !stakingInfo.drepId && parseFloat(stakingInfo.availableRewards) > 0 && (
+              <Card padding="md" className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800">
+                <div className="flex gap-3">
+                  <WarningIcon className="w-5 h-5 text-orange-600 flex-shrink-0" />
+                  <div className="text-sm text-orange-800 dark:text-orange-200">
+                    <p className="font-medium mb-1">DRep Delegation Required</p>
+                    <p className="text-xs">
+                      You must delegate to a DRep before you can withdraw your rewards. Use the <b>Vote</b> button on the dashboard.
+                    </p>
+                  </div>
+                </div>
+              </Card>
+            )}
+
             {/* Rewards Chart */}
             {rewardHistory.length > 0 && (
               <Card padding="lg">
