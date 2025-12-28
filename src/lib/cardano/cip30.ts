@@ -74,24 +74,27 @@ export class EduchainmagCIP30Provider {
   }
 
   async getBalance(): Promise<string> {
+    const start = Date.now();
+    console.log("[CIP30] getBalance called");
     try {
         const lucid = await this.getLucid();
-        const address = await this.wallet.getChangeAddress();
-        const utxos = await lucid.utxosAt(address);
+        console.log("[CIP30] Lucid init took:", Date.now() - start, "ms");
         
-        console.log("[CIP30] Calculating balance for", address);
-        console.log("[CIP30] UTXOs found:", utxos.length);
-
+        const address = await this.wallet.getChangeAddress();
+        console.log("[CIP30] Address:", address);
+        
+        // Use Lucid's wallet to get UTXOs (handles fetching from provider)
+        const utxos = await lucid.wallet.getUtxos();
+        console.log("[CIP30] UTXOs fetched:", utxos.length, "Time:", Date.now() - start, "ms");
+        
+        // Import CSL once
         const { C } = await import('lucid-cardano');
         
         let totalLovelace = BigInt(0);
         const totalAssets: Record<string, bigint> = {};
 
         for (const u of utxos) {
-            // Safe access to lovelace
-            const lovelace = u.assets['lovelace'] || u.assets.lovelace || BigInt(0);
-            totalLovelace += BigInt(lovelace);
-            
+            totalLovelace += u.assets.lovelace;
             for (const [unit, qty] of Object.entries(u.assets)) {
                 if (unit !== 'lovelace') {
                     totalAssets[unit] = (totalAssets[unit] || BigInt(0)) + (qty as bigint);
@@ -101,6 +104,7 @@ export class EduchainmagCIP30Provider {
         
         console.log("[CIP30] Total Lovelace:", totalLovelace.toString());
 
+        // Use Lucid to construct value CBOR
         const value = C.Value.new(C.BigNum.from_str(totalLovelace.toString()));
         
         if (Object.keys(totalAssets).length > 0) {
@@ -115,11 +119,12 @@ export class EduchainmagCIP30Provider {
         }
 
         const hex = Buffer.from(value.to_bytes()).toString('hex');
-        console.log("[CIP30] Balance Hex:", hex);
+        console.log("[CIP30] Balance Hex generated. Total time:", Date.now() - start, "ms");
         return hex;
     } catch (e) {
         console.error("CIP30 getBalance error:", e);
-        return "80"; // Empty map CBOR (zero value)
+        // Return 0 balance on error to avoid timeout
+        return "1a00000000"; // Or simplified empty value logic
     }
   }
 

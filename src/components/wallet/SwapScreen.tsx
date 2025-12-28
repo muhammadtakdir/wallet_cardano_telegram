@@ -61,9 +61,33 @@ export const SwapScreen: React.FC<SwapScreenProps> = ({ onBack }) => {
           <h1 className="text-xl font-bold">Swap</h1>
         </header>
   
-        <main className="flex-1 flex justify-center p-4">
-          <div className="w-full max-w-[450px]">
-                      <Swap
+              <main className="flex-1 flex flex-col items-center justify-center p-4">
+  
+                {network !== "mainnet" && (
+  
+                  <div className="w-full max-w-[450px] mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-xl text-center">
+  
+                    <p className="text-sm text-yellow-800 dark:text-yellow-200 font-medium">
+  
+                      Note: DexHunter Swap works on Mainnet only.
+  
+                    </p>
+  
+                    <p className="text-xs text-yellow-700 dark:text-yellow-300 mt-1">
+  
+                      You are currently on <b>{network}</b>. Please switch to Mainnet in settings to use Swap.
+  
+                    </p>
+  
+                  </div>
+  
+                )}
+  
+                <div className="w-full max-w-[450px]">
+  
+                  <Swap
+  
+        
                         orderTypes={["SWAP", "LIMIT"]}
                         theme={colorScheme === "light" ? "light" : "dark"}
                                     defaultTokenIn="lovelace"
