@@ -21,7 +21,13 @@ const GovernanceScreen = dynamic(
   { ssr: false }
 );
 
-type AppView = "loading" | "setup" | "create" | "import" | "import-pin" | "backup" | "unlock" | "dashboard" | "send" | "receive" | "asset-detail" | "staking" | "governance";
+// Dynamically import SwapScreen
+const SwapScreen = dynamic(
+  () => import("@/components/wallet/SwapScreen").then((mod) => mod.SwapScreen),
+  { ssr: false }
+);
+
+type AppView = "loading" | "setup" | "create" | "import" | "import-pin" | "backup" | "unlock" | "dashboard" | "send" | "receive" | "asset-detail" | "staking" | "governance" | "swap";
 
 // Hydration safe hook - prevents SSR mismatch
 function useHydrated() {
@@ -686,6 +692,9 @@ export default function WalletPage() {
         onGovernance={() => {
           setView("governance");
         }}
+        onSwap={() => {
+          setView("swap");
+        }}
         onAssetClick={(asset) => {
           console.log("page.tsx: onAssetClick called", asset);
           setSelectedAsset(asset);
@@ -709,6 +718,15 @@ export default function WalletPage() {
   if (view === "governance") {
     return (
       <GovernanceScreen
+        onBack={() => setView("dashboard")}
+      />
+    );
+  }
+
+  // Render swap
+  if (view === "swap") {
+    return (
+      <SwapScreen
         onBack={() => setView("dashboard")}
       />
     );

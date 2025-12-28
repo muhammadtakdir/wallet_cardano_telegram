@@ -1,4 +1,3 @@
-
 import { MeshTxBuilder, resolvePaymentKeyHash } from '@meshsdk/core';
 import type { MeshWallet } from '@meshsdk/core';
 import type { CardanoNetwork } from './types';
@@ -17,12 +16,6 @@ export const delegateToDRepMesh = async (
     const changeAddress = await wallet.getChangeAddress();
     const rewardAddresses = await wallet.getRewardAddresses();
 
-    console.log('[DRep] Wallet state:', { 
-      utxosCount: utxos?.length, 
-      changeAddress, 
-      rewardAddress: rewardAddresses?.[0] 
-    });
-
     if (!utxos || utxos.length === 0) {
       return { success: false, error: 'No UTxOs available in wallet' };
     }
@@ -35,19 +28,8 @@ export const delegateToDRepMesh = async (
     
     const rewardAddress = rewardAddresses[0];
 
-    console.log('[DRep] Debug Inputs:', {
-      rewardAddress,
-      rewardAddressType: typeof rewardAddress,
-      drepId,
-      drepIdType: typeof drepId
-    });
-
-    if (typeof drepId !== 'string' || !drepId) {
-        return { success: false, error: 'Invalid DRep ID format' };
-    }
-
-    // Import BlockfrostProvider dynamically
-    const { BlockfrostProvider } = await import('@meshsdk/core');
+    // Import BlockfrostProvider and MeshTxBuilder dynamically
+    const { BlockfrostProvider, MeshTxBuilder } = await import('@meshsdk/core');
     let apiKey = '';
     if (network === 'mainnet') {
       apiKey = process.env.NEXT_PUBLIC_BLOCKFROST_KEY_MAINNET || '';
@@ -60,10 +42,6 @@ export const delegateToDRepMesh = async (
     
     const provider = new BlockfrostProvider(apiKey);
     
-    // Create TxBuilder
-    console.log('[DRep] Initializing TxBuilder...');
-    const txBuilder = new MeshTxBuilder({ fetcher: provider, submitter: provider });
-
     // Check if stake key is registered (active)
     let stakeKeyActive = false;
     try {
@@ -78,29 +56,30 @@ export const delegateToDRepMesh = async (
             if (resp.ok) {
                 const data = await resp.json();
                 stakeKeyActive = !!data.active;
-                console.log('[DRep] Stake key active:', stakeKeyActive);
             }
         }
-    } catch (e) {
-        console.warn('[DRep] Failed to check stake key status:', e);
-    }
+    } catch {}
 
+    const txBuilder: any = new MeshTxBuilder({ fetcher: provider, submitter: provider });
+
+    // Register Stake Key if needed
     if (!stakeKeyActive) {
         console.log('[DRep] Registering stake certificate...');
         txBuilder.registerStakeCertificate(rewardAddress);
     }
 
-    // Delegate vote to DRep
-    console.log('[DRep] Adding vote delegation certificate...');
-    
-    // In newer Mesh versions:
-    if (typeof txBuilder.voteDelegationCertificate === 'function') {
-       console.log('[DRep] Using voteDelegationCertificate with:', { rewardAddress, dRepId: drepId });
-       // @ts-ignore - Mesh SDK beta types might have different key case, but documentation says dRepId
-       txBuilder.voteDelegationCertificate({ dRepId: drepId }, rewardAddress); 
+    // Set Vote Delegation
+    console.log('[DRep] Setting vote delegation...');
+    if (typeof txBuilder.voteDelegation === 'function') {
+        txBuilder.voteDelegation(rewardAddress, drepId);
+    } else if (typeof txBuilder.delegateVote === 'function') {
+        txBuilder.delegateVote(rewardAddress, drepId);
     } else {
-       console.error('[DRep] voteDelegationCertificate method missing on txBuilder');
-       return { success: false, error: 'Mesh SDK version incompatible with DRep delegation' };
+         console.warn('[DRep] MeshTxBuilder missing voteDelegation method, trying default...');
+         // Try default assumption or throw
+         // Likely it is voteDelegation but just untyped in this beta
+         if (txBuilder.voteDelegation) txBuilder.voteDelegation(rewardAddress, drepId);
+         else throw new Error("MeshTxBuilder missing governance methods (voteDelegation)");
     }
 
     console.log('[DRep] Building transaction...');
@@ -111,7 +90,7 @@ export const delegateToDRepMesh = async (
 
     console.log('[DRep] Transaction built successfully. Signing...');
 
-    // Partial sign true for stake key witnessing (let wallet decide what to sign)
+    // Sign with wallet - partialSign: true to ensure all witnesses are added
     const signed = await wallet.signTx(unsignedTx, true);
     
     console.log('[DRep] Transaction signed. Submitting...');

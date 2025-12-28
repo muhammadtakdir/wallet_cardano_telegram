@@ -15,6 +15,7 @@ interface WalletDashboardProps {
   onAddWallet?: () => void;
   onStaking?: () => void;
   onGovernance?: () => void;
+  onSwap?: () => void;
   onAssetClick?: (asset: WalletAsset) => void;
   points?: number | null;
 }
@@ -26,6 +27,7 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
   onAddWallet,
   onStaking,
   onGovernance,
+  onSwap,
   onAssetClick,
   points,
 }) => {
@@ -214,7 +216,7 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
         />
 
         {/* Action Buttons */}
-        <div className="grid grid-cols-4 gap-2">
+        <div className="grid grid-cols-5 gap-2">
           <Button
             variant="primary"
             size="lg"
@@ -225,7 +227,7 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
             className="flex flex-col items-center justify-center gap-1 h-auto py-2 px-1"
           >
             <SendIcon className="w-6 h-6" />
-            <span className="text-xs">Send</span>
+            <span className="text-[10px] sm:text-xs">Send</span>
           </Button>
           <Button
             variant="outline"
@@ -237,7 +239,19 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
             className="flex flex-col items-center justify-center gap-1 h-auto py-2 px-1"
           >
             <ReceiveIcon className="w-6 h-6" />
-            <span className="text-xs">Receive</span>
+            <span className="text-[10px] sm:text-xs">Receive</span>
+          </Button>
+          <Button
+            variant="outline"
+            size="lg"
+            fullWidth
+            onClick={() => {
+              onSwap?.();
+            }}
+            className="flex flex-col items-center justify-center gap-1 h-auto py-2 px-1"
+          >
+            <SwapIcon className="w-6 h-6" />
+            <span className="text-[10px] sm:text-xs">Swap</span>
           </Button>
           <Button
             variant="outline"
@@ -249,7 +263,7 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
             className="flex flex-col items-center justify-center gap-1 h-auto py-2 px-1"
           >
             <StakeIcon className="w-6 h-6" />
-            <span className="text-xs">Stake</span>
+            <span className="text-[10px] sm:text-xs">Stake</span>
           </Button>
           <Button
             variant="outline"
@@ -261,7 +275,7 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
             className="flex flex-col items-center justify-center gap-1 h-auto py-2 px-1"
           >
             <VoteIcon className="w-6 h-6" />
-            <span className="text-xs">Vote</span>
+            <span className="text-[10px] sm:text-xs">Vote</span>
           </Button>
         </div>
 
@@ -398,6 +412,12 @@ const VoteIcon: React.FC<{ className?: string }> = ({ className }) => (
       strokeWidth={2}
       d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
     />
+  </svg>
+);
+
+const SwapIcon: React.FC<{ className?: string }> = ({ className }) => (
+  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
   </svg>
 );
 

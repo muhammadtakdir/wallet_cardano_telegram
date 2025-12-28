@@ -1043,6 +1043,12 @@ export const getDRepInfo = async (drepId: string): Promise<DRepInfo | null> => {
         console.warn("Failed to fetch DRep metadata:", e);
       }
     }
+
+    // Hardcode name for known default DRep if fetch failed
+    // Removed per user request: keep as "Unknown DRep" if metadata fetch fails
+    /* if (name === "Unknown DRep" && data.drep_id === DEFAULT_DREP_ID) {
+      name = "Cardanesia DRep";
+    } */
     
     return {
       drepId: data.drep_id,

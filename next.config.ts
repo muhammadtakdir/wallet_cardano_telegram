@@ -68,7 +68,7 @@ const nextConfig: NextConfig = {
       base-uri 'self';
       form-action 'self';
       frame-ancestors https://web.telegram.org https://*.telegram.org;
-      connect-src *;
+      connect-src * https://api.dexhunter.io;
     `.replace(/\s{2,}/g, " ").trim();
 
     return [
@@ -96,6 +96,8 @@ const nextConfig: NextConfig = {
   env: {
     NEXT_PUBLIC_BLOCKFROST_API_KEY: process.env.NEXT_PUBLIC_BLOCKFROST_API_KEY,
     NEXT_PUBLIC_CARDANO_NETWORK: process.env.NEXT_PUBLIC_CARDANO_NETWORK || "preprod",
+    DEXHUNTER_API_HEADER: process.env.DEXHUNTER_API_HEADER,
+    DEXHUNTER_PARTNER_NAME: process.env.DEXHUNTER_PARTNER_NAME,
   },
 
   // Vercel optimization

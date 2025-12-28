@@ -228,7 +228,7 @@ export const fetchTokenPrices = async (policyIds: string[]): Promise<Record<stri
  */
 async function fetchTokenPricesDexHunter(policyIds: string[]): Promise<Record<string, number>> {
   try {
-    const response = await fetch("https://api.dexhunter.io/v1/price");
+    const response = await fetch("/api/dexhunter/price");
     if (!response.ok) return fetchTokenPricesMuesli(policyIds);
     
     const data = await response.json();
@@ -278,6 +278,49 @@ async function fetchTokenPricesMuesli(policyIds: string[]): Promise<Record<strin
     return {};
   }
 }
+
+/**
+ * Token info structure
+ */
+export interface TokenInfo {
+  unit: string; // policyId + nameHex
+  policyId: string;
+  name: string;
+  ticker: string;
+  decimals: number;
+}
+
+/**
+ * Fetch top tokens from MuesliSwap (as primary source)
+ */
+export const fetchSupportedTokens = async (): Promise<TokenInfo[]> => {
+  try {
+    // Use MuesliSwap API as primary source since the mapping below matches its format
+    const msResponse = await fetch("https://api.muesliswap.com/tokens");
+    
+    if (msResponse.ok) {
+      const msData = await msResponse.json();
+      
+      return msData.map((t: any) => ({
+        unit: t.address, // Muesli uses 'address' for unit
+        policyId: t.address.slice(0, 56),
+        name: t.name,
+        ticker: t.symbol,
+        decimals: t.decimal || 0,
+      }))
+      .filter((t: any) => !t.name.toLowerCase().includes("lp")) // Filter out LP tokens if desired
+      .slice(0, 100); // Limit to top 100
+    }
+
+    // Fallback or other sources could be added here
+    console.warn("MuesliSwap tokens API failed");
+    return [];
+    
+  } catch (e) {
+    console.warn("Failed to fetch supported tokens", e);
+    return [];
+  }
+};
 
 /**
  * Convert ADA to fiat
