@@ -2,9 +2,8 @@
 
 import * as React from "react";
 import { Card, Button } from "@/components/ui";
-import { useWalletStore, useCurrency } from "@/hooks";
+import { useWalletStore } from "@/hooks";
 import { WalletAsset } from "@/lib/cardano";
-import { formatFiatValue, getSavedCurrency, fetchAdaPrice } from "@/lib/currency";
 
 export interface AssetListProps {
   onAssetClick?: (asset: WalletAsset) => void;
@@ -16,31 +15,8 @@ type AssetTab = "tokens" | "nfts";
 export const AssetList: React.FC<AssetListProps> = ({ onAssetClick, onBack }) => {
   const { balance } = useWalletStore();
   const [activeTab, setActiveTab] = React.useState<AssetTab>("tokens");
-  const [prices, setPrices] = React.useState<Record<string, number>>({});
-  const [adaPrice, setAdaPrice] = React.useState<number>(0);
-  const currency = getSavedCurrency();
 
   const assets = balance?.assets || [];
-
-  // Fetch prices
-  React.useEffect(() => {
-    // 1. Fetch ADA Price
-    fetchAdaPrice().then(p => setAdaPrice(p[currency] || 0));
-
-    // 2. Fetch Token Prices
-    assets.forEach(async (asset) => {
-        if (asset.quantity === "1") return; // Skip likely NFTs for now to save reqs
-        try {
-            const res = await fetch(`/api/dexhunter/price?token=${asset.unit}`);
-            if (res.ok) {
-                const data = await res.json();
-                setPrices(prev => ({ ...prev, [asset.unit]: data.price }));
-            }
-        } catch (e) {
-            console.warn("Failed to fetch price for", asset.unit);
-        }
-    });
-  }, [assets, currency]);
 
   // Separate NFTs (quantity = 1) from tokens (quantity > 1)
   const { tokens, nfts } = React.useMemo(() => {
@@ -115,9 +91,6 @@ export const AssetList: React.FC<AssetListProps> = ({ onAssetClick, onBack }) =>
               key={`${asset.unit}-${index}`}
               asset={asset}
               isNFT={activeTab === "nfts"}
-              priceInAda={prices[asset.unit]}
-              adaPrice={adaPrice}
-              currency={currency}
               onClick={() => onAssetClick?.(asset)}
             />
           ))}
@@ -130,13 +103,12 @@ export const AssetList: React.FC<AssetListProps> = ({ onAssetClick, onBack }) =>
 interface AssetItemProps {
   asset: WalletAsset;
   isNFT?: boolean;
-  priceInAda?: number;
-  adaPrice?: number;
-  currency?: any;
   onClick?: () => void;
 }
 
-const AssetItem: React.FC<AssetItemProps> = ({ asset, isNFT = false, priceInAda, adaPrice, currency, onClick }) => {
+const AssetItem: React.FC<AssetItemProps> = ({ asset, isNFT = false, onClick }) => {
+  const [priceAda, setPriceAda] = React.useState<string | null>(null);
+  const [priceUsd, setPriceUsd] = React.useState<string | null>(null);
   const displayName = React.useMemo(() => {
     // Try to get readable name from metadata or asset name
     if (asset.metadata?.name) {
@@ -159,14 +131,50 @@ const AssetItem: React.FC<AssetItemProps> = ({ asset, isNFT = false, priceInAda,
     return asset.unit.slice(0, 16) + "...";
   }, [asset]);
 
+
   const policyId = asset.policyId || asset.unit.slice(0, 56);
   const assetNameHex = asset.assetName || asset.unit.slice(56);
   const fingerprint = asset.fingerprint;
-  
-  // Calculate value
-  const quantityNum = Number(asset.quantity) / Math.pow(10, asset.metadata?.decimals || 0);
-  const valueInAda = priceInAda ? quantityNum * priceInAda : 0;
-  const valueInFiat = (valueInAda && adaPrice) ? valueInAda * adaPrice : 0;
+
+  React.useEffect(() => {
+    let cancelled = false;
+    const fetchPrice = async () => {
+      try {
+        // ADA
+        if (asset.unit === "lovelace") {
+          const adaRes = await fetch('/api/dexhunter/price?type=ada');
+          const adaValue = await adaRes.json();
+          if (!cancelled) {
+            setPriceAda("1");
+            setPriceUsd(Number(adaValue).toFixed(4));
+          }
+        } else {
+          // Token price in ADA
+          const tokenId = policyId + assetNameHex;
+          const [priceRes, adaRes] = await Promise.all([
+            fetch(`/api/dexhunter/price?token=${tokenId}`),
+            fetch('/api/dexhunter/price?type=ada')
+          ]);
+          
+          const priceData = await priceRes.json();
+          const adaValue = await adaRes.json();
+          
+          if (!cancelled) {
+            const priceInAda = priceData.price || 0;
+            setPriceAda(Number(priceInAda).toFixed(8));
+            setPriceUsd((Number(priceInAda) * Number(adaValue)).toFixed(6));
+          }
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setPriceAda(null);
+          setPriceUsd(null);
+        }
+      }
+    };
+    fetchPrice();
+    return () => { cancelled = true; };
+  }, [asset.unit, policyId, assetNameHex]);
 
   return (
     <Card
@@ -214,38 +222,31 @@ const AssetItem: React.FC<AssetItemProps> = ({ asset, isNFT = false, priceInAda,
               </span>
             )}
           </div>
-           {/* Price Info */}
-           {!isNFT && valueInFiat > 0 && (
-             <p className="text-xs text-gray-500 dark:text-gray-400 font-mono">
-               {formatFiatValue(valueInFiat, currency)}
-             </p>
-           )}
-           {!isNFT && valueInFiat === 0 && (
-              <p className="text-xs text-gray-500 dark:text-gray-400 font-mono truncate">
-                {fingerprint || policyId.slice(0, 8) + "..."}
-              </p>
-           )}
-           {isNFT && (
-             <p className="text-xs text-gray-500 dark:text-gray-400 font-mono truncate">
-               {fingerprint || policyId.slice(0, 8) + "..."}
-             </p>
-           )}
-        </div>
-
-        {/* Quantity */}
-        <div className="text-right">
-          {!isNFT && (
-            <p className="font-semibold text-gray-900 dark:text-white">
-              {formatQuantity(asset.quantity, asset.metadata?.decimals)}
+          {fingerprint ? (
+            <p className="text-xs text-gray-500 dark:text-gray-400 font-mono truncate">
+              {fingerprint}
+            </p>
+          ) : (
+            <p className="text-xs text-gray-500 dark:text-gray-400 font-mono truncate">
+              {policyId.slice(0, 8)}...{policyId.slice(-8)}
             </p>
           )}
-          {/* ADA Value */}
-          {!isNFT && valueInAda > 0 && (
-             <p className="text-xs text-gray-400 font-mono">
-               {valueInAda.toFixed(2)} ₳
-             </p>
+        </div>
+
+        {/* Quantity & Price */}
+        <div className="text-right flex flex-col items-end gap-1 min-w-[90px]">
+          {!isNFT && (
+            <>
+              <p className="font-semibold text-gray-900 dark:text-white">
+                {formatQuantity(asset.quantity, asset.metadata?.decimals)}
+              </p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                {priceAda !== null ? `~${priceAda} ADA` : "-"}
+                {priceUsd !== null ? ` ($${priceUsd})` : ""}
+              </p>
+            </>
           )}
-          {isNFT && <ChevronRightIcon className="w-5 h-5 text-gray-400 ml-auto" />}
+          <ChevronRightIcon className="w-5 h-5 text-gray-400" />
         </div>
       </div>
     </Card>

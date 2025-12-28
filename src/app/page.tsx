@@ -4,30 +4,11 @@ import * as React from "react";
 import { useWalletStore, useTelegram } from "@/hooks";
 import { hasStoredWallet, getWalletsList } from "@/lib/storage";
 import { isLockedOut, getLockoutRemaining } from "@/lib/storage/encryption";
-import { WalletDashboard, MnemonicDisplay, MnemonicInput, SendScreen, ReceiveScreen, AssetDetail } from "@/components/wallet";
-import dynamic from "next/dynamic";
+import { WalletDashboard, MnemonicDisplay, MnemonicInput, SendScreen, ReceiveScreen, AssetDetail, StakingScreen } from "@/components/wallet";
 import { Card, Button, PinInput, Input } from "@/components/ui";
 import { WalletAsset } from "@/lib/cardano";
 
-// Dynamically import StakingScreen to avoid SSR WASM issues
-const StakingScreen = dynamic(
-  () => import("@/components/wallet/StakingScreen").then((mod) => mod.StakingScreen),
-  { ssr: false }
-);
-
-// Dynamically import GovernanceScreen
-const GovernanceScreen = dynamic(
-  () => import("@/components/wallet/GovernanceScreen").then((mod) => mod.GovernanceScreen),
-  { ssr: false }
-);
-
-// Dynamically import SwapScreen
-const SwapScreen = dynamic(
-  () => import("@/components/wallet/SwapScreen").then((mod) => mod.SwapScreen),
-  { ssr: false }
-);
-
-type AppView = "loading" | "setup" | "create" | "import" | "import-pin" | "backup" | "unlock" | "dashboard" | "send" | "receive" | "asset-detail" | "staking" | "governance" | "swap";
+type AppView = "loading" | "setup" | "create" | "import" | "import-pin" | "backup" | "unlock" | "dashboard" | "send" | "receive" | "asset-detail" | "staking";
 
 // Hydration safe hook - prevents SSR mismatch
 function useHydrated() {
@@ -52,13 +33,7 @@ export default function WalletPage() {
     deleteAllWallets,
   } = useWalletStore();
 
-  const { isInTelegram, ready, expand, hapticFeedback, user, initData } = useTelegram();
-
-  React.useEffect(() => {
-    if (user) {
-      console.log('[Page] Telegram User:', user);
-    }
-  }, [user]);
+  const { isInTelegram, ready, expand, hapticFeedback } = useTelegram();
 
   const [view, setView] = React.useState<AppView>("loading");
   const [pin, setPin] = React.useState("");
@@ -69,77 +44,6 @@ export default function WalletPage() {
   const [walletName, setWalletName] = React.useState("");
   const [isAddingWallet, setIsAddingWallet] = React.useState(false);
   const [selectedAsset, setSelectedAsset] = React.useState<WalletAsset | null>(null);
-  const [userPoints, setUserPoints] = React.useState<number | null>(null);
-  const [isDbChecked, setIsDbChecked] = React.useState(false);
-
-  // Initial DB check (check if user exists in Supabase)
-  React.useEffect(() => {
-    const checkUserStatus = async () => {
-      if (user && initData && !isDbChecked) {
-        try {
-          const response = await fetch("/api/user/register", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ initData }),
-          });
-          if (response.ok) {
-            const data = await response.json();
-            if (data.success && data.registered) {
-              setUserPoints(data.points);
-            }
-          } else {
-             const err = await response.json();
-             console.warn("Pre-check failed:", err);
-          }
-        } catch (e) {
-          console.warn("Pre-check failed", e);
-        } finally {
-          setIsDbChecked(true);
-        }
-      }
-    };
-    checkUserStatus();
-  }, [user, initData, isDbChecked]);
-
-  // Full registration when wallet becomes available
-  const { walletAddress, isLoggedIn: walletIsLoggedIn } = useWalletStore();
-  React.useEffect(() => {
-    const performFullRegistration = async () => {
-      if (walletIsLoggedIn && walletAddress && user && initData) {
-        try {
-          const response = await fetch("/api/user/register", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ initData, walletAddress }),
-          });
-          if (response.ok) {
-            const data = await response.json();
-            if (data.success) {
-              setUserPoints(data.points);
-            }
-          } else {
-            const errData = await response.json();
-            console.error("Registration failed:", errData);
-            if (isInTelegram) {
-              // Show specific error to help debugging
-              const msg = errData.error || "Registration failed";
-              if (msg.includes("Telegram data hash")) {
-                alert("Setup Error: TELEGRAM_BOT_TOKEN is missing or invalid on server.");
-              } else if (msg.includes("Database")) {
-                alert("Setup Error: Supabase credentials missing on server.");
-              } else {
-                // Only show generic errors in dev, or subtle one in prod
-                console.warn("Reg error:", msg);
-              }
-            }
-          }
-        } catch (e) {
-          console.error("Auto-registration failed", e);
-        }
-      }
-    };
-    performFullRegistration();
-  }, [walletIsLoggedIn, walletAddress, user, initData]);
 
   // Initialize Telegram WebApp
   React.useEffect(() => {
@@ -539,52 +443,14 @@ export default function WalletPage() {
     const locked = isLockedOut();
     const lockoutSeconds = getLockoutRemaining();
     
-    // Fallback initials
-    const initials = user ? `${user.first_name?.[0] || ''}${user.last_name?.[0] || ''}`.toUpperCase() : '?';
-    console.log('[Page] Profile Photo URL:', user?.photo_url);
-    
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-gray-50 dark:bg-gray-900">
-        <div className="relative mb-6">
-          {user?.photo_url ? (
-            <img 
-              src={user.photo_url} 
-              alt={user.first_name} 
-              className="w-24 h-24 rounded-full border-4 border-white dark:border-gray-800 shadow-xl object-cover block"
-              onError={(e) => {
-                console.warn("Profile photo failed to load, showing fallback");
-                (e.target as HTMLImageElement).style.display = 'none';
-                const parent = (e.target as HTMLImageElement).parentElement;
-                if (parent) {
-                  const fallback = parent.querySelector('.photo-fallback');
-                  if (fallback) (fallback as HTMLElement).style.setProperty('display', 'flex', 'important');
-                }
-              }}
-            />
-          ) : null}
-          
-          {/* Initials Fallback (Shown if no photo_url OR if img fails) */}
-          <div 
-            className="photo-fallback w-24 h-24 rounded-full bg-blue-600 flex items-center justify-center text-white text-2xl font-bold border-4 border-white dark:border-gray-800 shadow-xl"
-            style={{ display: user?.photo_url ? 'none' : 'flex' }}
-          >
-            {initials}
-          </div>
-
-          <div className="absolute -bottom-1 -right-1 bg-blue-600 rounded-full p-2 border-2 border-white dark:border-gray-800 shadow-md">
-            <WalletLogo className="w-5 h-5 text-white" />
-          </div>
-        </div>
+        <WalletLogo className="w-16 h-16 mb-6 text-blue-600" />
         
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2 text-center">
-          {user ? `Welcome back, ${user.first_name}` : "Welcome Back"}
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+          Welcome Back
         </h1>
-        {userPoints !== null && (
-          <div className="bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 px-3 py-1 rounded-full text-xs font-bold mb-4">
-            {userPoints} PTS
-          </div>
-        )}
-        <p className="text-gray-500 dark:text-gray-400 mb-8 text-center">
+        <p className="text-gray-500 dark:text-gray-400 mb-8">
           Enter your PIN to unlock
         </p>
 
@@ -689,18 +555,11 @@ export default function WalletPage() {
           console.log("page.tsx: onStaking called, setting view to staking");
           setView("staking");
         }}
-        onGovernance={() => {
-          setView("governance");
-        }}
-        onSwap={() => {
-          setView("swap");
-        }}
         onAssetClick={(asset) => {
           console.log("page.tsx: onAssetClick called", asset);
           setSelectedAsset(asset);
           setView("asset-detail");
         }}
-        points={userPoints}
       />
     );
   }
@@ -709,24 +568,6 @@ export default function WalletPage() {
   if (view === "staking") {
     return (
       <StakingScreen
-        onBack={() => setView("dashboard")}
-      />
-    );
-  }
-
-  // Render governance
-  if (view === "governance") {
-    return (
-      <GovernanceScreen
-        onBack={() => setView("dashboard")}
-      />
-    );
-  }
-
-  // Render swap
-  if (view === "swap") {
-    return (
-      <SwapScreen
         onBack={() => setView("dashboard")}
       />
     );

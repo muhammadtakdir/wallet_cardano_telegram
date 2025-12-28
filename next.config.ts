@@ -8,27 +8,9 @@ const nextConfig: NextConfig = {
     config.experiments = {
       ...config.experiments,
       asyncWebAssembly: true,
-      syncWebAssembly: true,
       layers: true,
       topLevelAwait: true,
     };
-
-    // Handle WASM file loading
-    // Rule for Lucid Cardano WASM (treat as asset/resource to avoid __wbindgen_placeholder__ error)
-    config.module.rules.push({
-      test: /lucid-cardano.*\.wasm$/,
-      type: "asset/resource",
-    });
-
-    // Rule for other WASM (MeshJS, etc)
-    config.module.rules.push({
-      test: /\.wasm$/,
-      exclude: /lucid-cardano/,
-      type: "webassembly/async",
-    });
-
-    // Fix for WASM loading in Next.js
-    config.output.webassemblyModuleFilename = "static/wasm/[modulehash].wasm";
 
     // Fix for packages that use fs, net, tls (common in crypto libraries)
     if (!isServer) {
@@ -58,27 +40,10 @@ const nextConfig: NextConfig = {
 
   // Required for Telegram WebApp and external API calls
   async headers() {
-    const cspHeader = `
-      default-src 'self';
-      script-src 'self' 'unsafe-eval' 'unsafe-inline' https://telegram.org https://app.telegram.org;
-      style-src 'self' 'unsafe-inline';
-      img-src 'self' blob: data: https://ipfs.io https://gateway.pinata.cloud https://*.blockfrost.io;
-      font-src 'self';
-      object-src 'none';
-      base-uri 'self';
-      form-action 'self';
-      frame-ancestors https://web.telegram.org https://*.telegram.org;
-      connect-src * https://api.dexhunter.io;
-    `.replace(/\s{2,}/g, " ").trim();
-
     return [
       {
         source: "/:path*",
         headers: [
-          {
-            key: "Content-Security-Policy",
-            value: cspHeader,
-          },
           {
             key: "Cross-Origin-Embedder-Policy",
             value: "credentialless",
@@ -102,8 +67,6 @@ const nextConfig: NextConfig = {
 
   // Vercel optimization
   reactStrictMode: true,
-
-  serverExternalPackages: ["@meshsdk/core", "lucid-cardano"],
 
   // Allow images from IPFS and other sources
   images: {

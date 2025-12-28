@@ -334,13 +334,13 @@ declare global {
         ready: () => void;
         expand: () => void;
         close: () => void;
-        initData: string;
         initDataUnsafe: {
           user?: TelegramUser;
           query_id?: string;
           auth_date?: number;
           hash?: string;
         };
+        initData: string;
         themeParams: TelegramThemeParams;
         colorScheme: "light" | "dark";
         platform: string;

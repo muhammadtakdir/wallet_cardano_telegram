@@ -994,6 +994,9 @@ const DEFAULT_POOL_NAME = "Cardanesia";
 // GOVERNANCE / DREP FUNCTIONS
 // ================================
 
+// Default DRep ID (Placeholder - User should replace with active DRep)
+export const DEFAULT_DREP_ID = "drep1yfvngdk5pv943x3rauyxd300s93rjrx"; // Example Preprod DRep
+
 export interface DRepInfo {
   drepId: string;
   view: string;

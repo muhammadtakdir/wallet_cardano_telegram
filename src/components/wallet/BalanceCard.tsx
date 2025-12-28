@@ -81,8 +81,6 @@ export const BalanceCard: React.FC<BalanceCardProps> = ({
   const [isBalanceHidden, setIsBalanceHidden] = React.useState(false);
   const [currency, setCurrency] = React.useState<FiatCurrency>("usd");
   const [adaPrice, setAdaPrice] = React.useState<number>(0);
-  const [adaPriceChange, setAdaPriceChange] = React.useState<number>(0);
-  const [tokenPrices, setTokenPrices] = React.useState<Record<string, number>>({});
   const [showCurrencySelector, setShowCurrencySelector] = React.useState(false);
   const [isPriceLoading, setIsPriceLoading] = React.useState(true);
 
@@ -92,35 +90,28 @@ export const BalanceCard: React.FC<BalanceCardProps> = ({
     setCurrency(getSavedCurrency());
   }, []);
 
-  // Fetch ADA and Token prices
+  // Fetch ADA price
   React.useEffect(() => {
-    const loadPrices = async () => {
+    const loadPrice = async () => {
       setIsPriceLoading(true);
-      try {
-        const prices = await fetchAdaPrice();
-        setAdaPrice(prices[currency] || 0);
-        
-        const { getAdaPriceChange, fetchTokenPrices } = await import("@/lib/currency");
-        const change = await getAdaPriceChange(currency);
-        setAdaPriceChange(change);
-        
-        if (balance?.assets && balance.assets.length > 0) {
-          const policyIds = balance.assets.map(a => a.policyId || a.unit.slice(0, 56));
-          const tPrices = await fetchTokenPrices(policyIds);
-          setTokenPrices(tPrices);
-        }
-      } catch (err) {
-        console.warn('[BalanceCard] Failed to fetch prices:', err);
-      } finally {
-        setIsPriceLoading(false);
-      }
+      const prices = await fetchAdaPrice();
+      setAdaPrice(prices[currency] || 0);
+      setIsPriceLoading(false);
     };
-    loadPrices();
+    loadPrice();
     
     // Refresh price every minute
-    const interval = setInterval(loadPrices, 60000);
+    const interval = setInterval(loadPrice, 60000);
     return () => clearInterval(interval);
-  }, [currency, balance?.assets]);
+  }, [currency]);
+
+  // Debug logging
+  React.useEffect(() => {
+    console.log("=== BalanceCard Debug ===");
+    console.log("balance:", balance);
+    console.log("balance?.ada:", balance?.ada, typeof balance?.ada);
+    console.log("=== End BalanceCard Debug ===");
+  }, [balance, address, network]);
 
   const handleCopyAddress = async () => {
     if (!address) return;
@@ -252,13 +243,8 @@ export const BalanceCard: React.FC<BalanceCardProps> = ({
                 ) : isBalanceHidden ? (
                   <span>{currencyInfo?.flag} ••••••</span>
                 ) : (
-                  <span className="flex items-center gap-1">
+                  <span>
                     {currencyInfo?.flag} ≈ {formatFiatValue(fiatValue, currency)}
-                    {adaPriceChange !== 0 && (
-                      <span className={`inline-flex items-center font-bold text-[10px] ml-1 ${adaPriceChange > 0 ? 'text-green-500' : 'text-red-500'}`}>
-                        {adaPriceChange > 0 ? '▲' : '▼'} {Math.abs(adaPriceChange).toFixed(2)}%
-                      </span>
-                    )}
                   </span>
                 )}
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -373,30 +359,11 @@ export const BalanceCard: React.FC<BalanceCardProps> = ({
                           {isNFT ? "NFT" : "Token"}
                         </span>
                       </div>
-                      <div className="flex items-center gap-2">
-                        {asset.metadata?.ticker && (
-                          <span className="text-xs text-gray-500 dark:text-gray-400">
-                            ${asset.metadata.ticker}
-                          </span>
-                        )}
-                        {/* Token Value in Fiat */}
-                        {!isBalanceHidden && adaPrice > 0 && (
-                          <>
-                            <span className="text-gray-300 dark:text-gray-600 text-[10px]">•</span>
-                            <span className="text-[10px] text-gray-500 font-medium">
-                              {(() => {
-                                const policyId = asset.policyId || asset.unit.slice(0, 56);
-                                const priceInAda = tokenPrices[policyId] || 0;
-                                if (priceInAda > 0) {
-                                  const totalAda = parseFloat(asset.quantity) * priceInAda;
-                                  return formatFiatValue(totalAda * adaPrice, currency);
-                                }
-                                return "Price N/A";
-                              })()}
-                            </span>
-                          </>
-                        )}
-                      </div>
+                      {asset.metadata?.ticker && (
+                        <span className="text-xs text-gray-500 dark:text-gray-400">
+                          ${asset.metadata.ticker}
+                        </span>
+                      )}
                     </div>
                     
                     {/* Quantity & Arrow */}

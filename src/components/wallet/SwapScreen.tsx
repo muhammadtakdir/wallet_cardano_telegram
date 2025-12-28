@@ -3,6 +3,7 @@
 import * as React from "react";
 import dynamic from "next/dynamic";
 import { useWalletStore } from "@/hooks";
+import { injectEduchainmagWallet } from "@/lib/cardano/cip30";
 
 // Import DexHunter styles
 import "@dexhunterio/swaps/lib/assets/style.css";
@@ -23,12 +24,17 @@ export interface SwapScreenProps {
 }
 
 export const SwapScreen: React.FC<SwapScreenProps> = ({ onBack }) => {
-  const { walletAddress } = useWalletStore();
+  const { walletAddress, _walletInstance, network } = useWalletStore();
   const [isMounted, setIsMounted] = React.useState(false);
 
   React.useEffect(() => {
     setIsMounted(true);
-  }, []);
+    
+    // Inject internal wallet for DexHunter to find
+    if (_walletInstance) {
+      injectEduchainmagWallet(_walletInstance, network);
+    }
+  }, [_walletInstance, network]);
 
   if (!isMounted) return null;
 
@@ -50,6 +56,7 @@ export const SwapScreen: React.FC<SwapScreenProps> = ({ onBack }) => {
       <main className="flex justify-center p-2 sm:p-4 pb-20">
         <div className="w-full max-w-[450px]">
           {/* DexHunter Widget with requested configuration */}
+
           <Swap
             orderTypes={["SWAP", "LIMIT"]}
             defaultTokenIn="lovelace"
@@ -65,8 +72,9 @@ export const SwapScreen: React.FC<SwapScreenProps> = ({ onBack }) => {
             theme="dark"
             swapWidth={400}
             showChart={true}
-            partnerCode={process.env.DEXHUNTER_API_HEADER || "DEXHUNTER_API_HEADER"}
-            partnerName={process.env.DEXHUNTER_PARTNER_NAME || "DEXHUNTER_PARTNER_NAME"}
+            partnerCode={process.env.NEXT_PUBLIC_DEXHUNTER_API_HEADER || process.env.DEXHUNTER_API_HEADER || ""}
+            partnerName={process.env.NEXT_PUBLIC_DEXHUNTER_PARTNER_NAME || process.env.DEXHUNTER_PARTNER_NAME || ""}
+            selectedWallet={"educhainmag" as any}
             onSwapSuccess={(data: any) => console.log('Swap successful:', data)}
             onSwapError={(error: any) => console.error('Swap error:', error)}
           />

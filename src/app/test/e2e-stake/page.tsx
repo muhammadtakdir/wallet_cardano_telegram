@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { createWalletFromMnemonic, delegateToPool, getAddressUtxos } from "@/lib/cardano";
 
 export default function E2EStakePage() {
   const [result, setResult] = React.useState<any>(null);
@@ -10,8 +11,6 @@ export default function E2EStakePage() {
     const run = async () => {
       setRunning(true);
       try {
-        const { createWalletFromMnemonic, delegateToPool, getAddressUtxos } = await import("@/lib/cardano");
-
         // Test inputs (can be overridden via query params)
         const url = new URL(window.location.href);
         const mnemonic = url.searchParams.get("mnemonic") || "test test test test test test test test test test test junk";

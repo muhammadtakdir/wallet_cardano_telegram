@@ -7,7 +7,7 @@ export const getDexHunterPartnerName = () => {
   return process.env.DEXHUNTER_PARTNER_NAME;
 };
 
-export const DEXHUNTER_API_URL = (process.env.DEXHUNTER_API_URL || "https://api.dexhunter.io") + "/v1";
+export const DEXHUNTER_API_URL = process.env.DEXHUNTER_API_URL || "https://api-us.dexhunterv3.app";
 
 /**
  * Fetch token price in ADA

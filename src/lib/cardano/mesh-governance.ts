@@ -1,6 +1,7 @@
-import { MeshTxBuilder, resolvePaymentKeyHash } from '@meshsdk/core';
+import { MeshTxBuilder, BlockfrostProvider } from '@meshsdk/core';
 import type { MeshWallet } from '@meshsdk/core';
 import type { CardanoNetwork } from './types';
+import { getBlockfrostApiKey } from './types';
 
 /**
  * Delegate to a DRep using Mesh SDK
@@ -28,20 +29,15 @@ export const delegateToDRepMesh = async (
     
     const rewardAddress = rewardAddresses[0];
 
-    // Import BlockfrostProvider and MeshTxBuilder dynamically
-    const { BlockfrostProvider, MeshTxBuilder } = await import('@meshsdk/core');
-    let apiKey = '';
-    if (network === 'mainnet') {
-      apiKey = process.env.NEXT_PUBLIC_BLOCKFROST_KEY_MAINNET || '';
-    } else if (network === 'preprod') {
-      apiKey = process.env.NEXT_PUBLIC_BLOCKFROST_KEY_PREPROD || '';
-    } else {
-      apiKey = process.env.NEXT_PUBLIC_BLOCKFROST_KEY_PREVIEW || '';
+    // Initialize Provider and Builder
+    const apiKey = getBlockfrostApiKey(network);
+    if (!apiKey) {
+        throw new Error("Blockfrost API key not found");
     }
-    if (!apiKey) apiKey = process.env.NEXT_PUBLIC_BLOCKFROST_API_KEY || '';
     
     const provider = new BlockfrostProvider(apiKey);
-    
+    const txBuilder = new MeshTxBuilder({ fetcher: provider, submitter: provider, verbose: true }) as any;
+
     // Check if stake key is registered (active)
     let stakeKeyActive = false;
     try {
@@ -51,46 +47,52 @@ export const delegateToDRepMesh = async (
         ? 'https://cardano-preprod.blockfrost.io/api/v0'
         : 'https://cardano-preview.blockfrost.io/api/v0';
         
-        if (apiKey) {
-            const resp = await fetch(`${baseUrl}/accounts/${rewardAddress}`, { headers: { project_id: apiKey } });
-            if (resp.ok) {
-                const data = await resp.json();
-                stakeKeyActive = !!data.active;
-            }
+        const resp = await fetch(`${baseUrl}/accounts/${rewardAddress}`, { headers: { project_id: apiKey } });
+        if (resp.ok) {
+            const data = await resp.json();
+            stakeKeyActive = !!data.active;
         }
-    } catch {}
-
-    const txBuilder: any = new MeshTxBuilder({ fetcher: provider, submitter: provider });
-
-    // Register Stake Key if needed
-    if (!stakeKeyActive) {
-        console.log('[DRep] Registering stake certificate...');
-        txBuilder.registerStakeCertificate(rewardAddress);
+    } catch (e) {
+        console.warn('Failed to check stake key status:', e);
     }
 
-    // Set Vote Delegation
+    // 1. Register Stake Key if needed (2 ADA deposit)
+    if (!stakeKeyActive) {
+        console.log('[DRep] Registering stake certificate...');
+        if (txBuilder.registerStakeCertificate) {
+            txBuilder.registerStakeCertificate(rewardAddress);
+        }
+    }
+
+    // 2. Set Vote Delegation
     console.log('[DRep] Setting vote delegation...');
     if (typeof txBuilder.voteDelegation === 'function') {
-        txBuilder.voteDelegation(rewardAddress, drepId);
+        // Newer Mesh versions: voteDelegation(drepId, rewardAddress) or (rewardAddress, drepId)?
+        // Common pattern is (certificate, ...) or (address, ...). 
+        // Based on recent docs: voteDelegation(drepId, rewardAddress)
+        try {
+            txBuilder.voteDelegation(drepId, rewardAddress);
+        } catch (e) {
+            // If it fails, try swapping args just in case API changed
+            console.warn('voteDelegation failed, retrying with swapped args...', e);
+            txBuilder.voteDelegation(rewardAddress, drepId);
+        }
     } else if (typeof txBuilder.delegateVote === 'function') {
         txBuilder.delegateVote(rewardAddress, drepId);
     } else {
-         console.warn('[DRep] MeshTxBuilder missing voteDelegation method, trying default...');
-         // Try default assumption or throw
-         // Likely it is voteDelegation but just untyped in this beta
-         if (txBuilder.voteDelegation) txBuilder.voteDelegation(rewardAddress, drepId);
-         else throw new Error("MeshTxBuilder missing governance methods (voteDelegation)");
+        console.warn('[DRep] MeshTxBuilder missing governance methods');
+        throw new Error("MeshTxBuilder missing governance methods (voteDelegation)");
     }
 
     console.log('[DRep] Building transaction...');
     const unsignedTx = await txBuilder
       .changeAddress(changeAddress)
-      .selectUtxosFrom(utxos)
+      .selectUtxosFrom(utxos) // Let Mesh handle selection logic
       .complete();
 
     console.log('[DRep] Transaction built successfully. Signing...');
 
-    // Sign with wallet - partialSign: true to ensure all witnesses are added
+    // Sign with wallet
     const signed = await wallet.signTx(unsignedTx, true);
     
     console.log('[DRep] Transaction signed. Submitting...');

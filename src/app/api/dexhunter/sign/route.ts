@@ -1,21 +1,13 @@
+
 import { NextResponse } from 'next/server';
 import { getDexHunterApiKey, DEXHUNTER_API_URL } from '@/lib/dexhunter-server';
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
+    const body = await request.json(); // Should contain { txCbor, signatures }
     const apiKey = getDexHunterApiKey();
-    const partnerName = process.env.DEXHUNTER_PARTNER_NAME;
 
-    // Inject partner info if not present
-    if (apiKey && !body.partnerCode) {
-      body.partnerCode = apiKey;
-    }
-    if (partnerName && !body.partnerName) {
-      body.partnerName = partnerName;
-    }
-    
-    const url = `${DEXHUNTER_API_URL}/swap/estimate`;
+    const url = `${DEXHUNTER_API_URL}/swap/sign`;
     const headers: HeadersInit = {
       'Content-Type': 'application/json',
     };

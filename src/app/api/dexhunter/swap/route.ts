@@ -16,7 +16,7 @@ export async function POST(request: Request) {
       body.partnerName = partnerName;
     }
     
-    const url = `${DEXHUNTER_API_URL}/swap`;
+    const url = `${DEXHUNTER_API_URL}/swap/build`;
     const headers: HeadersInit = {
       'Content-Type': 'application/json',
     };

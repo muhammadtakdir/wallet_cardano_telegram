@@ -10,32 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- **Points & Rewards System**: Gamified experience for users.
-  - **Account Age Reward**: Awards 30-400 points upon registration based on estimated Telegram account age.
-  - **Transaction Rewards**:
-    - **Deposit**: +500 PTS when ADA balance increases by > 5 ADA.
-    - **Send**: +500 PTS for every outgoing transaction.
-    - **Staking**: +1000 PTS for delegating to a pool.
-    - **Undelegate**: +1000 PTS for deregistering stake key.
-  - New API endpoint `/api/user/add-points` for secure point increments.
-  - **Dashboard Integration**: Live point updates on the wallet dashboard and unlock screen.
-
 - **User Registration System (Binding)**: Links Telegram identity to Cardano wallet address.
   - New API endpoint `/api/user/register` to securely handle user registration.
   - Validates Telegram `initData` hash to prevent spoofing.
   - Uses Supabase to store user data (Telegram ID, username, wallet address).
+  - **Welcome Bonus**: Awards 100 points to new users upon first registration.
   - Updates existing users' wallet addresses if changed.
-  - **Proactive Check**: Checks user status immediately upon app load to display points even before wallet unlock.
-
 - **Supabase Integration**: Added `@supabase/supabase-js` client and `src/lib/supabaseAdmin.ts` for secure database operations.
-
-### Security
-- **API Hardening**:
-  - Implemented `auth_date` validation (24-hour window) on all user APIs to prevent **Replay Attacks**.
-  - Added strict **Content Security Policy (CSP)** headers to `next.config.ts` to mitigate XSS risks.
-- **Data Privacy**:
-  - Removed excessive `console.log` statements from production UI components (`WalletDashboard`, `TransactionList`, `BalanceCard`) to prevent data leakage.
-  - Removed debug loggers that printed full wallet state.
 
 ### Fixed
 - **Staking Functionality**:
@@ -47,10 +28,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added **Paginated Browsing**: Users can now browse all available pools (Next/Previous buttons) when not searching.
   - Improved UI: Hides the currently delegated pool from search results to prevent confusion.
   - Added "Undelegate" button to easily deregister stake key and reclaim deposit.
-- **Registration Bugs**:
-  - Fixed "username column not found" error by aligning API payload with Supabase schema.
-  - Fixed `initData` reference error in root page.
-  - Added specific alerts for missing server configuration (`TELEGRAM_BOT_TOKEN`, `SUPABASE_KEY`).
 
 ## [0.4.0] - 2024-12-22 - Staking Feature ⚡
 

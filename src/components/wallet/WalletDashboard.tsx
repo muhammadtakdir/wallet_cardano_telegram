@@ -14,10 +14,7 @@ interface WalletDashboardProps {
   onSettings?: () => void;
   onAddWallet?: () => void;
   onStaking?: () => void;
-  onGovernance?: () => void;
-  onSwap?: () => void;
   onAssetClick?: (asset: WalletAsset) => void;
-  points?: number | null;
 }
 
 export const WalletDashboard: React.FC<WalletDashboardProps> = ({
@@ -26,10 +23,7 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
   onSettings,
   onAddWallet,
   onStaking,
-  onGovernance,
-  onSwap,
   onAssetClick,
-  points,
 }) => {
   const {
     walletAddress,
@@ -44,39 +38,34 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
     changeNetwork,
   } = useWalletStore();
 
-  const { isInTelegram, hapticFeedback, showAlert, user, initData } = useTelegram();
+  // Debug logging
+  React.useEffect(() => {
+    console.log("=== WalletDashboard Debug ===");
+    debugLogObject("WalletData", {
+      walletAddress,
+      walletName,
+      balanceAda: balance?.ada,
+      balanceLovelace: balance?.lovelace,
+      balanceAssets: balance?.assets,
+      transactionsCount: transactions?.length,
+      network,
+      isLoading,
+      walletsCount: wallets?.length,
+    });
+    
+    // Check wallets array contents
+    if (wallets && wallets.length > 0) {
+      console.log("=== First Wallet Details ===");
+      debugLogObject("Wallet[0]", wallets[0] as unknown as Record<string, unknown>);
+    }
+    console.log("=== End Debug ===");
+  }, [walletAddress, walletName, balance, transactions, network, isLoading, wallets]);
+
+  const { isInTelegram, hapticFeedback, showAlert } = useTelegram();
 
   const [isRefreshing, setIsRefreshing] = React.useState(false);
   const [showWalletSelector, setShowWalletSelector] = React.useState(false);
   const [showNetworkSelector, setShowNetworkSelector] = React.useState(false);
-  const [showAllTransactions, setShowAllTransactions] = React.useState(false);
-  const prevBalanceRef = React.useRef<string | null>(null);
-
-  // Detect deposit and award points
-  React.useEffect(() => {
-    if (balance?.ada && prevBalanceRef.current !== null) {
-      const current = parseFloat(balance.ada);
-      const prev = parseFloat(prevBalanceRef.current);
-      if (current > prev + 5) {
-        // Balance increased by > 5 ADA, award points
-        if (initData) {
-          fetch("/api/user/add-points", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ initData, actionType: "deposit" }),
-          })
-          .then(res => res.json())
-          .then(data => {
-            console.log("Deposit points awarded:", data);
-          })
-          .catch(e => console.warn("Failed to award deposit points", e));
-        }
-      }
-    }
-    if (balance?.ada) {
-      prevBalanceRef.current = balance.ada;
-    }
-  }, [balance?.ada, initData]);
 
   // Refresh data on mount
   React.useEffect(() => {
@@ -87,7 +76,6 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
     setIsRefreshing(true);
     try {
       await refreshBalance();
-      // Re-fetch user points if needed (optional)
       if (isInTelegram) {
         hapticFeedback.notificationOccurred("success");
       }
@@ -131,20 +119,6 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
 
   return (
     <div className="min-h-screen bg-gray-100 dark:bg-gray-900">
-      {/* Welcome Banner for Telegram Users */}
-      {user && (
-        <div className="bg-blue-600 text-white px-4 py-2 text-sm flex justify-between items-center shadow-md">
-          <span className="font-medium truncate">
-            Welcome, {safeString(user.first_name)}!
-          </span>
-          {points !== undefined && points !== null && (
-            <span className="bg-blue-700 bg-opacity-50 px-2 py-0.5 rounded-full text-xs font-bold whitespace-nowrap">
-              {points} PTS
-            </span>
-          )}
-        </div>
-      )}
-
       {/* Header */}
       <header className="bg-white dark:bg-gray-800 shadow-sm sticky top-0 z-10">
         <div className="px-4 py-3 flex items-center justify-between">
@@ -216,86 +190,55 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
         />
 
         {/* Action Buttons */}
-        <div className="grid grid-cols-5 gap-2">
+        <div className="grid grid-cols-3 gap-3">
           <Button
             variant="primary"
             size="lg"
             fullWidth
             onClick={() => {
+              console.log("Send button clicked");
               onSend?.();
             }}
-            className="flex flex-col items-center justify-center gap-1 h-auto py-2 px-1"
+            className="flex items-center justify-center gap-2"
           >
-            <SendIcon className="w-6 h-6" />
-            <span className="text-[10px] sm:text-xs">Send</span>
+            <SendIcon className="w-5 h-5" />
+            Send
           </Button>
           <Button
             variant="outline"
             size="lg"
             fullWidth
             onClick={() => {
+              console.log("Receive button clicked");
               onReceive?.();
             }}
-            className="flex flex-col items-center justify-center gap-1 h-auto py-2 px-1"
+            className="flex items-center justify-center gap-2"
           >
-            <ReceiveIcon className="w-6 h-6" />
-            <span className="text-[10px] sm:text-xs">Receive</span>
+            <ReceiveIcon className="w-5 h-5" />
+            Receive
           </Button>
           <Button
             variant="outline"
             size="lg"
             fullWidth
             onClick={() => {
-              onSwap?.();
-            }}
-            className="flex flex-col items-center justify-center gap-1 h-auto py-2 px-1"
-          >
-            <SwapIcon className="w-6 h-6" />
-            <span className="text-[10px] sm:text-xs">Swap</span>
-          </Button>
-          <Button
-            variant="outline"
-            size="lg"
-            fullWidth
-            onClick={() => {
+              console.log("Staking button clicked");
               onStaking?.();
             }}
-            className="flex flex-col items-center justify-center gap-1 h-auto py-2 px-1"
+            className="flex items-center justify-center gap-2"
           >
-            <StakeIcon className="w-6 h-6" />
-            <span className="text-[10px] sm:text-xs">Stake</span>
-          </Button>
-          <Button
-            variant="outline"
-            size="lg"
-            fullWidth
-            onClick={() => {
-              onGovernance?.();
-            }}
-            className="flex flex-col items-center justify-center gap-1 h-auto py-2 px-1"
-          >
-            <VoteIcon className="w-6 h-6" />
-            <span className="text-[10px] sm:text-xs">Vote</span>
+            <StakeIcon className="w-5 h-5" />
+            Stake
           </Button>
         </div>
 
         {/* Transaction History */}
         <section>
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-              Recent Transactions
-            </h2>
-            {transactions && transactions.length > 3 && (
-              <button 
-                onClick={() => setShowAllTransactions(!showAllTransactions)}
-                className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
-              >
-                {showAllTransactions ? "Show Less" : "View All"}
-              </button>
-            )}
-          </div>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">
+            Recent Transactions
+          </h2>
           <TransactionList
-            transactions={showAllTransactions ? transactions : transactions.slice(0, 3)}
+            transactions={transactions}
             walletAddress={walletAddress || undefined}
             isLoading={isLoading || isRefreshing}
           />
@@ -401,23 +344,6 @@ const StakeIcon: React.FC<{ className?: string }> = ({ className }) => (
       strokeWidth={2}
       d="M13 10V3L4 14h7v7l9-11h-7z"
     />
-  </svg>
-);
-
-const VoteIcon: React.FC<{ className?: string }> = ({ className }) => (
-  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={2}
-      d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-    />
-  </svg>
-);
-
-const SwapIcon: React.FC<{ className?: string }> = ({ className }) => (
-  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
   </svg>
 );
 
