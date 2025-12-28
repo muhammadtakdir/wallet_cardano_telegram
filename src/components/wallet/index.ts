@@ -40,3 +40,9 @@ export type { CollateralManagerProps } from "./CollateralManager";
 
 export { StakingScreen } from "./StakingScreen";
 export type { StakingScreenProps } from "./StakingScreen";
+
+export { SwapScreen } from "./SwapScreen";
+export type { SwapScreenProps } from "./SwapScreen";
+
+export { GovernanceScreen } from "./GovernanceScreen";
+export type { GovernanceScreenProps } from "./GovernanceScreen";

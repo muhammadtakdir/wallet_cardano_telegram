@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { Card, Button, PinInput } from "@/components/ui";
-import { useWalletStore } from "@/hooks";
+import { useWalletStore, useTelegram } from "@/hooks";
 import { 
   shortenAddress, 
   adaToLovelace, 
@@ -55,6 +55,7 @@ interface ResolvedRecipient {
 
 export const SendScreen: React.FC<SendScreenProps> = ({ onBack, onSuccess }) => {
   const { walletAddress, balance, network, activeWalletId } = useWalletStore();
+  const { initData } = useTelegram();
   
   // State
   const [step, setStep] = React.useState<SendStep>("input");
@@ -352,6 +353,15 @@ export const SendScreen: React.FC<SendScreenProps> = ({ onBack, onSuccess }) => 
         setTxHash(result.txHash);
         setStep("success");
         onSuccess?.(result.txHash);
+
+        // Award points
+        if (initData) {
+          fetch('/api/user/add-points', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ initData, actionType: 'send' }),
+          }).catch(console.warn);
+        }
       } else {
         throw new Error(result.error || "Transaction failed");
       }

@@ -1,52 +1,138 @@
 import { MeshWallet } from "@meshsdk/core";
+import { getBlockfrostApiKey, getBlockfrostUrl, CardanoNetwork } from "./types";
 
 /**
  * CIP-30 Wallet API implementation for MeshWallet
- * This allows external components (like DexHunter widget) to interact with our internal wallet.
  */
 export class EduchainmagCIP30Provider {
   private wallet: MeshWallet;
-  private network: number; // 0 for testnet, 1 for mainnet
+  private networkName: CardanoNetwork;
+  private networkId: number;
+  private lucidInstance: any = null;
 
   constructor(wallet: MeshWallet, network: "mainnet" | "preview" | "preprod") {
     this.wallet = wallet;
-    this.network = network === "mainnet" ? 1 : 0;
+    this.networkName = network;
+    this.networkId = network === "mainnet" ? 1 : 0;
+  }
+
+  private async getLucid() {
+    if (this.lucidInstance) return this.lucidInstance;
+
+    const { Lucid, Blockfrost } = await import('lucid-cardano');
+    const apiKey = getBlockfrostApiKey(this.networkName);
+    const url = getBlockfrostUrl(this.networkName);
+    
+    const lucid = await Lucid.new(
+      new Blockfrost(url, apiKey),
+      this.networkName === 'mainnet' ? 'Mainnet' : this.networkName === 'preprod' ? 'Preprod' : 'Preview'
+    );
+
+    const mnemonic = (this.wallet as any)._mnemonic;
+    if (mnemonic) {
+      lucid.selectWalletFromSeed(mnemonic);
+    }
+
+    this.lucidInstance = lucid;
+    return lucid;
   }
 
   async getNetworkId(): Promise<number> {
-    return this.network;
+    return this.networkId;
   }
 
   async getUtxos(amount?: string, paginate?: { page: number; pageSize: number }): Promise<string[] | null> {
-    const utxos = await this.wallet.getUtxos();
-    // Return CBOR encoded UTxOs (Mesh SDK provides them in a format we can use)
-    // Note: Most dApps expect hex-encoded CBOR strings for UTxOs
-    // Mesh's getUtxos returns UTxO objects. We need to convert them to hex CBOR.
-    // For now, let's return them as they are or find a way to encode them.
-    // Actually, Mesh's wallet.getUtxos() returns the objects.
-    // A full CIP-30 implementation is complex, but let's try a simplified one.
-    return utxos.map(utxo => {
-        // This is a placeholder. Real CIP-30 needs full CBOR.
-        // But some components might work with the objects if they use Mesh under the hood.
-        return (utxo as any).cbor || ""; 
-    }).filter(c => !!c);
+    try {
+        const lucid = await this.getLucid();
+        // Use Lucid's wallet to get UTXOs (handles fetching from provider)
+        const utxos = await lucid.wallet.getUtxos();
+        
+        // Convert to CBOR hex
+        const utxosCore = utxos.map((u: any) => lucid.utils.utxoToCore(u));
+        return utxosCore.map((u: any) => u.to_hex());
+    } catch (e) {
+        console.error("CIP30 getUtxos error:", e);
+        return [];
+    }
   }
 
   async getCollateral(): Promise<string[] | null> {
-    const utxos = await this.wallet.getUtxos();
-    // Find a suitable collateral UTxO
-    const collateral = utxos.find(u => u.output.amount.length === 1 && u.output.amount[0].unit === "lovelace");
-    return collateral ? [(collateral as any).cbor] : null;
+    try {
+        const lucid = await this.getLucid();
+        const utxos = await lucid.wallet.getUtxos();
+        // Lower threshold to 2 ADA for testing (standard is 5, but 3 ADA wallet needs to work)
+        const collateral = utxos.find((u: any) => Object.keys(u.assets).length === 1 && u.assets.lovelace >= BigInt(2000000));
+        
+        if (collateral) {
+             const core = lucid.utils.utxoToCore(collateral);
+             return [core.to_hex()];
+        }
+        return [];
+    } catch (e) {
+        return [];
+    }
   }
 
   async getBalance(): Promise<string> {
-    // Should return hex encoded CBOR of the balance
-    return ""; // Placeholder
+    try {
+        const lucid = await this.getLucid();
+        const address = await this.wallet.getChangeAddress();
+        const utxos = await lucid.utxosAt(address);
+        
+        console.log("[CIP30] Calculating balance for", address);
+        console.log("[CIP30] UTXOs found:", utxos.length);
+
+        const { C } = await import('lucid-cardano');
+        
+        let totalLovelace = BigInt(0);
+        const totalAssets: Record<string, bigint> = {};
+
+        for (const u of utxos) {
+            // Safe access to lovelace
+            const lovelace = u.assets['lovelace'] || u.assets.lovelace || BigInt(0);
+            totalLovelace += BigInt(lovelace);
+            
+            for (const [unit, qty] of Object.entries(u.assets)) {
+                if (unit !== 'lovelace') {
+                    totalAssets[unit] = (totalAssets[unit] || BigInt(0)) + (qty as bigint);
+                }
+            }
+        }
+        
+        console.log("[CIP30] Total Lovelace:", totalLovelace.toString());
+
+        const value = C.Value.new(C.BigNum.from_str(totalLovelace.toString()));
+        
+        if (Object.keys(totalAssets).length > 0) {
+            const multiAsset = C.MultiAsset.new();
+            for (const [unit, qty] of Object.entries(totalAssets)) {
+                const policyId = C.ScriptHash.from_bytes(Buffer.from(unit.slice(0, 56), 'hex'));
+                const assetName = C.AssetName.new(Buffer.from(unit.slice(56), 'hex'));
+                const amount = C.BigNum.from_str(qty.toString());
+                multiAsset.set_asset(policyId, assetName, amount);
+            }
+            value.set_multiasset(multiAsset);
+        }
+
+        const hex = Buffer.from(value.to_bytes()).toString('hex');
+        console.log("[CIP30] Balance Hex:", hex);
+        return hex;
+    } catch (e) {
+        console.error("CIP30 getBalance error:", e);
+        return "80"; // Empty map CBOR (zero value)
+    }
   }
 
   async getUsedAddresses(): Promise<string[]> {
-    const address = await this.wallet.getUsedAddresses();
-    return address;
+    try {
+        const lucid = await this.getLucid();
+        const addr = await lucid.wallet.address(); // Bech32
+        const { C } = await import('lucid-cardano');
+        const addrHex = Buffer.from(C.Address.from_bech32(addr).to_bytes()).toString('hex');
+        return [addrHex];
+    } catch {
+        return [];
+    }
   }
 
   async getUnusedAddresses(): Promise<string[]> {
@@ -54,14 +140,34 @@ export class EduchainmagCIP30Provider {
   }
 
   async getChangeAddress(): Promise<string> {
-    return await this.wallet.getChangeAddress();
+    try {
+        const lucid = await this.getLucid();
+        const addr = await lucid.wallet.address(); // Bech32
+        const { C } = await import('lucid-cardano');
+        const addrHex = Buffer.from(C.Address.from_bech32(addr).to_bytes()).toString('hex');
+        return addrHex;
+    } catch {
+        return "";
+    }
   }
 
   async getRewardAddresses(): Promise<string[]> {
-    return await this.wallet.getRewardAddresses();
+    try {
+        const lucid = await this.getLucid();
+        const addr = await lucid.wallet.rewardAddress(); // Bech32
+        if (!addr) return [];
+        const { C } = await import('lucid-cardano');
+        const addrHex = Buffer.from(C.Address.from_bech32(addr).to_bytes()).toString('hex');
+        return [addrHex];
+    } catch {
+        return [];
+    }
   }
 
   async signTx(tx: string, partialSign: boolean = false): Promise<string> {
+    // DexHunter sends CBOR hex. Mesh signTx expects CBOR hex.
+    // Using MeshWallet for signing as it is already initialized with keys.
+    // Mesh signTx returns CBOR witness set.
     return await this.wallet.signTx(tx, partialSign);
   }
 
@@ -82,9 +188,9 @@ export const injectEduchainmagWallet = (wallet: MeshWallet, network: any) => {
 
   const provider = new EduchainmagCIP30Provider(wallet, network);
 
-  const educhainmagWallet = {
-    name: "Educhainmag",
-    icon: "https://educhainmag.com/favicon.ico", // Updated icon placeholder
+  const walletMetadata = {
+    name: "Nami", // Masquerade as Nami for compatibility
+    icon: "https://namiwallet.io/favicon.ico", // Use Nami icon or our own
     apiVersion: "0.1.0",
     enable: async () => provider,
     isEnabled: async () => true,
@@ -94,8 +200,11 @@ export const injectEduchainmagWallet = (wallet: MeshWallet, network: any) => {
     (window as any).cardano = {};
   }
 
-  (window as any).cardano.educhainmag = educhainmagWallet;
-  
-  // Also set it as the default if requested or if no other wallet exists
-  // window.cardano.selectedWallet = "educhainmag";
+  // Inject as nami to ensure auto-connect
+  (window as any).cardano.nami = walletMetadata;
+  (window as any).cardano.educhainmag = {
+      ...walletMetadata,
+      name: "Educhainmag Wallet",
+      icon: "https://educhainmag.com/favicon.ico"
+  };
 };

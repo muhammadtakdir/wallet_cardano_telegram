@@ -106,29 +106,34 @@ interface AssetItemProps {
   onClick?: () => void;
 }
 
-const AssetItem: React.FC<AssetItemProps> = ({ asset, isNFT = false, onClick }) => {
+export const AssetItem: React.FC<AssetItemProps> = ({ asset, isNFT = false, onClick }) => {
   const [priceAda, setPriceAda] = React.useState<string | null>(null);
   const [priceUsd, setPriceUsd] = React.useState<string | null>(null);
   const displayName = React.useMemo(() => {
-    // Try to get readable name from metadata or asset name
+    // 1. Check metadata name
     if (asset.metadata?.name) {
       return asset.metadata.name;
     }
-    if (asset.assetName) {
-      // Try to decode hex asset name
+    
+    // 2. Try to decode hex assetName
+    const nameHex = asset.assetName || (asset.unit.length > 56 ? asset.unit.slice(56) : "");
+    if (nameHex) {
       try {
-        if (/^[0-9a-fA-F]+$/.test(asset.assetName)) {
-          const decoded = Buffer.from(asset.assetName, "hex").toString("utf8");
+        if (/^[0-9a-fA-F]+$/.test(nameHex)) {
+          const decoded = Buffer.from(nameHex, "hex").toString("utf8");
+          // Only use if it looks like a real name (alphanumeric + common symbols)
           if (/^[\x20-\x7E]+$/.test(decoded)) {
             return decoded;
           }
         }
       } catch {
-        // Ignore decode errors
+        // Fallback to hex
       }
-      return asset.assetName.length > 20 ? asset.assetName.slice(0, 20) + "..." : asset.assetName;
+      return nameHex.length > 15 ? nameHex.slice(0, 10) + "..." : nameHex;
     }
-    return asset.unit.slice(0, 16) + "...";
+    
+    // 3. Last fallback: Policy ID fragment
+    return asset.unit.slice(0, 8) + "..." + asset.unit.slice(-4);
   }, [asset]);
 
 

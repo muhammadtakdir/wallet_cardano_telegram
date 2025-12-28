@@ -32,6 +32,9 @@ export const TransactionList: React.FC<TransactionListProps> = ({
     console.log("=== End TransactionList Debug ===");
   }, [transactions, walletAddress]);
 
+  const [showAll, setShowAll] = React.useState(false);
+  const displayedTransactions = showAll ? transactions : transactions.slice(0, 3);
+
   if (isLoading) {
     return (
       <Card padding="md">
@@ -67,7 +70,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   return (
     <Card padding="none">
       <div className="divide-y divide-gray-200 dark:divide-gray-700">
-        {transactions.map((tx, index) => (
+        {displayedTransactions.map((tx, index) => (
           <TransactionItem
             key={tx.hash || index}
             transaction={tx}
@@ -76,6 +79,16 @@ export const TransactionList: React.FC<TransactionListProps> = ({
           />
         ))}
       </div>
+      {transactions.length > 3 && (
+        <div className="p-3 border-t border-gray-200 dark:border-gray-700 text-center">
+          <button
+            onClick={() => setShowAll(!showAll)}
+            className="text-sm text-blue-600 dark:text-blue-400 font-medium hover:underline"
+          >
+            {showAll ? "Show Less" : "View All Transactions"}
+          </button>
+        </div>
+      )}
     </Card>
   );
 };

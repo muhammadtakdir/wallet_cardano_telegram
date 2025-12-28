@@ -4,11 +4,11 @@ import * as React from "react";
 import { useWalletStore, useTelegram } from "@/hooks";
 import { hasStoredWallet, getWalletsList } from "@/lib/storage";
 import { isLockedOut, getLockoutRemaining } from "@/lib/storage/encryption";
-import { WalletDashboard, MnemonicDisplay, MnemonicInput, SendScreen, ReceiveScreen, AssetDetail, StakingScreen } from "@/components/wallet";
+import { WalletDashboard, MnemonicDisplay, MnemonicInput, SendScreen, ReceiveScreen, AssetDetail, StakingScreen, SwapScreen, GovernanceScreen } from "@/components/wallet";
 import { Card, Button, PinInput, Input } from "@/components/ui";
 import { WalletAsset } from "@/lib/cardano";
 
-type AppView = "loading" | "setup" | "create" | "import" | "import-pin" | "backup" | "unlock" | "dashboard" | "send" | "receive" | "asset-detail" | "staking";
+type AppView = "loading" | "setup" | "create" | "import" | "import-pin" | "backup" | "unlock" | "dashboard" | "send" | "receive" | "asset-detail" | "staking" | "swap" | "governance";
 
 // Hydration safe hook - prevents SSR mismatch
 function useHydrated() {
@@ -33,7 +33,7 @@ export default function WalletPage() {
     deleteAllWallets,
   } = useWalletStore();
 
-  const { isInTelegram, ready, expand, hapticFeedback } = useTelegram();
+  const { isInTelegram, ready, expand, hapticFeedback, user } = useTelegram();
 
   const [view, setView] = React.useState<AppView>("loading");
   const [pin, setPin] = React.useState("");
@@ -445,14 +445,19 @@ export default function WalletPage() {
     
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-gray-50 dark:bg-gray-900">
-        <WalletLogo className="w-16 h-16 mb-6 text-blue-600" />
-        
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
-          Welcome Back
-        </h1>
-        <p className="text-gray-500 dark:text-gray-400 mb-8">
-          Enter your PIN to unlock
-        </p>
+        <div className="mb-6 text-center">
+          {user?.photo_url ? (
+            <img src={user.photo_url} alt="" className="w-20 h-20 rounded-full mx-auto mb-4 border-2 border-white dark:border-gray-800 shadow-lg" />
+          ) : (
+            <WalletLogo className="w-16 h-16 mb-4 text-blue-600 mx-auto" />
+          )}
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">
+            Welcome Back, {user?.first_name || "User"}
+          </h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Enter your PIN to unlock your wallet
+          </p>
+        </div>
 
         <Card padding="lg" className="w-full max-w-sm">
           {locked ? (
@@ -543,20 +548,12 @@ export default function WalletPage() {
     return (
       <WalletDashboard
         onAddWallet={handleAddWallet}
-        onSend={() => {
-          console.log("page.tsx: onSend called, setting view to send");
-          setView("send");
-        }}
-        onReceive={() => {
-          console.log("page.tsx: onReceive called, setting view to receive");
-          setView("receive");
-        }}
-        onStaking={() => {
-          console.log("page.tsx: onStaking called, setting view to staking");
-          setView("staking");
-        }}
+        onSend={() => setView("send")}
+        onReceive={() => setView("receive")}
+        onStaking={() => setView("staking")}
+        onSwap={() => setView("swap")}
+        onGovernance={() => setView("governance")}
         onAssetClick={(asset) => {
-          console.log("page.tsx: onAssetClick called", asset);
           setSelectedAsset(asset);
           setView("asset-detail");
         }}
@@ -568,6 +565,24 @@ export default function WalletPage() {
   if (view === "staking") {
     return (
       <StakingScreen
+        onBack={() => setView("dashboard")}
+      />
+    );
+  }
+
+  // Render swap
+  if (view === "swap") {
+    return (
+      <SwapScreen
+        onBack={() => setView("dashboard")}
+      />
+    );
+  }
+
+  // Render governance
+  if (view === "governance") {
+    return (
+      <GovernanceScreen
         onBack={() => setView("dashboard")}
       />
     );

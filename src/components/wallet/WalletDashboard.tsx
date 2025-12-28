@@ -14,6 +14,8 @@ interface WalletDashboardProps {
   onSettings?: () => void;
   onAddWallet?: () => void;
   onStaking?: () => void;
+  onSwap?: () => void;
+  onGovernance?: () => void;
   onAssetClick?: (asset: WalletAsset) => void;
 }
 
@@ -23,6 +25,8 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
   onSettings,
   onAddWallet,
   onStaking,
+  onSwap,
+  onGovernance,
   onAssetClick,
 }) => {
   const {
@@ -61,16 +65,72 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
     console.log("=== End Debug ===");
   }, [walletAddress, walletName, balance, transactions, network, isLoading, wallets]);
 
-  const { isInTelegram, hapticFeedback, showAlert } = useTelegram();
+  const { isInTelegram, user, initData, hapticFeedback, showAlert } = useTelegram();
 
   const [isRefreshing, setIsRefreshing] = React.useState(false);
   const [showWalletSelector, setShowWalletSelector] = React.useState(false);
   const [showNetworkSelector, setShowNetworkSelector] = React.useState(false);
+  const [userPoints, setUserPoints] = React.useState<number | null>(null);
+  const prevBalanceRef = React.useRef<number | null>(null);
 
   // Refresh data on mount
   React.useEffect(() => {
     handleRefresh();
-  }, []);
+    // Register user/fetch points
+    if (initData && walletAddress) {
+      registerUser();
+    }
+  }, [walletAddress, initData]);
+
+  // Track deposit rewards
+  React.useEffect(() => {
+    if (balance?.ada) {
+      const currentBalance = parseFloat(balance.ada);
+      if (prevBalanceRef.current !== null) {
+        const diff = currentBalance - prevBalanceRef.current;
+        // If balance increased by > 5 ADA
+        if (diff > 5) {
+          console.log(`[Rewards] Deposit detected! Diff: ${diff} ADA`);
+          awardDepositPoints();
+        }
+      }
+      prevBalanceRef.current = currentBalance;
+    }
+  }, [balance?.ada]);
+
+  const awardDepositPoints = async () => {
+    if (!initData) return;
+    try {
+      const res = await fetch('/api/user/add-points', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ initData, actionType: 'deposit' }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        // Refresh points
+        registerUser(); 
+      }
+    } catch (e) {
+      console.warn('Failed to award deposit points:', e);
+    }
+  };
+
+  const registerUser = async () => {
+    try {
+      const res = await fetch('/api/user/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ initData, walletAddress }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setUserPoints(data.points);
+      }
+    } catch (e) {
+      console.error('Failed to register user/fetch points:', e);
+    }
+  };
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
@@ -178,6 +238,34 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
 
       {/* Main Content */}
       <main className="px-4 py-6 space-y-6 pb-24">
+        {/* Welcome Banner & Points */}
+        <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-sm flex items-center justify-between border border-blue-100 dark:border-blue-900/30">
+          <div className="flex items-center gap-3">
+            {user?.photo_url ? (
+              <img src={user.photo_url} alt="" className="w-10 h-10 rounded-full" />
+            ) : (
+              <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 font-bold">
+                {user?.first_name?.charAt(0) || "U"}
+              </div>
+            )}
+            <div>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Selamat datang,</p>
+              <p className="font-bold text-gray-900 dark:text-white">
+                {user?.first_name || "Pengguna"} {user?.last_name || ""}
+              </p>
+            </div>
+          </div>
+          <div className="text-right">
+            <p className="text-[10px] text-gray-500 dark:text-gray-400 uppercase font-bold tracking-wider">Reward Points</p>
+            <div className="flex items-center gap-1 justify-end">
+              <span className="text-xl font-black text-blue-600 dark:text-blue-400">
+                {userPoints !== null ? userPoints.toLocaleString() : "..."}
+              </span>
+              <span className="text-[10px] font-bold text-gray-400">PTS</span>
+            </div>
+          </div>
+        </div>
+
         {/* Balance Card */}
         <BalanceCard
           balance={balance}
@@ -190,45 +278,56 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
         />
 
         {/* Action Buttons */}
-        <div className="grid grid-cols-3 gap-3">
+        <div className="flex flex-wrap justify-between gap-y-4 gap-x-2">
           <Button
             variant="primary"
-            size="lg"
-            fullWidth
-            onClick={() => {
-              console.log("Send button clicked");
-              onSend?.();
-            }}
-            className="flex items-center justify-center gap-2"
+            onClick={() => onSend?.()}
+            className="flex-1 min-w-[70px] flex flex-col items-center justify-center gap-1.5 py-3 h-auto rounded-2xl shadow-sm"
           >
-            <SendIcon className="w-5 h-5" />
-            Send
+            <div className="bg-white/20 p-2 rounded-xl">
+              <SendIcon className="w-5 h-5" />
+            </div>
+            <span className="text-[11px] font-bold uppercase tracking-tight">Send</span>
+          </Button>
+          <Button
+            variant="primary"
+            onClick={() => onReceive?.()}
+            className="flex-1 min-w-[70px] flex flex-col items-center justify-center gap-1.5 py-3 h-auto rounded-2xl shadow-sm"
+          >
+            <div className="bg-white/20 p-2 rounded-xl">
+              <ReceiveIcon className="w-5 h-5" />
+            </div>
+            <span className="text-[11px] font-bold uppercase tracking-tight">Receive</span>
+          </Button>
+          <Button
+            variant="primary"
+            onClick={() => onSwap?.()}
+            className="flex-1 min-w-[70px] flex flex-col items-center justify-center gap-1.5 py-3 h-auto rounded-2xl shadow-sm bg-gradient-to-br from-blue-600 to-indigo-600 border-none"
+          >
+            <div className="bg-white/20 p-2 rounded-xl">
+              <SwapIcon className="w-5 h-5" />
+            </div>
+            <span className="text-[11px] font-bold uppercase tracking-tight">Swap</span>
           </Button>
           <Button
             variant="outline"
-            size="lg"
-            fullWidth
-            onClick={() => {
-              console.log("Receive button clicked");
-              onReceive?.();
-            }}
-            className="flex items-center justify-center gap-2"
+            onClick={() => onStaking?.()}
+            className="flex-1 min-w-[70px] flex flex-col items-center justify-center gap-1.5 py-3 h-auto rounded-2xl border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800"
           >
-            <ReceiveIcon className="w-5 h-5" />
-            Receive
+            <div className="bg-blue-50 dark:bg-blue-900/30 p-2 rounded-xl">
+              <StakeIcon className="w-5 h-5 text-blue-600" />
+            </div>
+            <span className="text-[11px] font-bold uppercase tracking-tight text-gray-700 dark:text-gray-300">Stake</span>
           </Button>
           <Button
             variant="outline"
-            size="lg"
-            fullWidth
-            onClick={() => {
-              console.log("Staking button clicked");
-              onStaking?.();
-            }}
-            className="flex items-center justify-center gap-2"
+            onClick={() => onGovernance?.()}
+            className="flex-1 min-w-[70px] flex flex-col items-center justify-center gap-1.5 py-3 h-auto rounded-2xl border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800"
           >
-            <StakeIcon className="w-5 h-5" />
-            Stake
+            <div className="bg-purple-50 dark:bg-purple-900/30 p-2 rounded-xl">
+              <GovernanceIcon className="w-5 h-5 text-purple-600" />
+            </div>
+            <span className="text-[11px] font-bold uppercase tracking-tight text-gray-700 dark:text-gray-300">Gov</span>
           </Button>
         </div>
 
@@ -344,6 +443,18 @@ const StakeIcon: React.FC<{ className?: string }> = ({ className }) => (
       strokeWidth={2}
       d="M13 10V3L4 14h7v7l9-11h-7z"
     />
+  </svg>
+);
+
+const SwapIcon: React.FC<{ className?: string }> = ({ className }) => (
+  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+  </svg>
+);
+
+const GovernanceIcon: React.FC<{ className?: string }> = ({ className }) => (
+  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
   </svg>
 );
 

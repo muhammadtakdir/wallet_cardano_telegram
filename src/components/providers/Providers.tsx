@@ -1,6 +1,8 @@
 "use client";
 
 import * as React from "react";
+import { useWalletStore } from "@/hooks";
+import { injectEduchainmagWallet } from "@/lib/cardano/cip30";
 
 interface ProvidersProps {
   children: React.ReactNode;
@@ -8,12 +10,17 @@ interface ProvidersProps {
 
 /**
  * Application-wide providers wrapper
- * 
- * Note: MeshProvider removed as it's not needed for core wallet operations.
- * We use @meshsdk/core directly for wallet functionality.
- * MeshProvider was causing React Error #185 in some cases.
  */
 export const Providers: React.FC<ProvidersProps> = ({ children }) => {
+  const { _walletInstance, network } = useWalletStore();
+
+  // Global wallet injection for dApps/Widgets
+  React.useEffect(() => {
+    if (_walletInstance) {
+      injectEduchainmagWallet(_walletInstance, network);
+    }
+  }, [_walletInstance, network]);
+
   return (
     <React.Fragment>
       {children}

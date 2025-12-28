@@ -50,10 +50,11 @@ export async function POST(request: Request) {
     // Define points based on action
     let pointsToAdd = 0;
     switch (actionType) {
-      case 'deposit': pointsToAdd = 500; break;
-      case 'send': pointsToAdd = 500; break;
-      case 'stake': pointsToAdd = 1000; break;
-      case 'undelegate': pointsToAdd = 1000; break;
+      case 'deposit': pointsToAdd = 200; break;
+      case 'send': pointsToAdd = 200; break;
+      case 'stake': pointsToAdd = 200; break;
+      case 'undelegate': pointsToAdd = 200; break;
+      case 'swap': pointsToAdd = 1000; break;
       default: return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
     }
 

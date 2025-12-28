@@ -103,7 +103,8 @@ export async function POST(request: Request) {
       }
 
       console.log(`[API v2] Registering new user ${telegramId} with wallet ${walletAddress}`);
-      points = calculateInitialPoints(telegramId);
+      // Welcome Bonus (100) + Age Reward (30-400)
+      points = 100 + calculateInitialPoints(telegramId);
       const { error: insertError } = await supabaseAdmin
         .from('users')
         .insert({
