@@ -14,6 +14,7 @@
     "ci:test": "npm ci --no-audit --prefer-offline && npm run build && npm run test:unit"
   },
   "dependencies": {
+    "@dexhunterio/swaps": "^2.0.4",
     "@meshsdk/core": "^1.9.0-beta.90",
     "@meshsdk/react": "^1.9.0-beta.90",
     "@supabase/supabase-js": "^2.89.0",
