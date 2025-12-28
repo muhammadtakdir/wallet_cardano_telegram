@@ -64,17 +64,6 @@ export const delegateToDRepMesh = async (
     console.log('[DRep] Initializing TxBuilder...');
     const txBuilder = new MeshTxBuilder({ fetcher: provider, submitter: provider });
 
-    // Explicitly add stake key as required signer to ensure witnessing
-    try {
-        const stakeKeyHash = resolvePaymentKeyHash(rewardAddress);
-        if (stakeKeyHash) {
-            console.log('[DRep] Adding required signer (stake key):', stakeKeyHash);
-            txBuilder.requiredSignerHash(stakeKeyHash);
-        }
-    } catch (e) {
-        console.warn('[DRep] Failed to add required signer:', e);
-    }
-
     // Check if stake key is registered (active)
     let stakeKeyActive = false;
     try {
@@ -122,9 +111,8 @@ export const delegateToDRepMesh = async (
 
     console.log('[DRep] Transaction built successfully. Signing...');
 
-    // Sign with ALL keys (partialSign = false) to ensure stake key witness is included
-    // MissingVKeyWitnessesUTXOW usually means stake key didn't sign
-    const signed = await wallet.signTx(unsignedTx);
+    // Partial sign true for stake key witnessing (let wallet decide what to sign)
+    const signed = await wallet.signTx(unsignedTx, true);
     
     console.log('[DRep] Transaction signed. Submitting...');
     const txHash = await wallet.submitTx(signed);

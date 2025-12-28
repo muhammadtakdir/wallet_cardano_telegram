@@ -1025,8 +1025,24 @@ export const getDRepInfo = async (drepId: string): Promise<DRepInfo | null> => {
 
     const data = await response.json();
     
-    // Fetch metadata if hash/url exists (optional enhancement)
-    // For now returning basic info
+    // Fetch metadata if hash/url exists
+    let name = "Unknown DRep";
+    if (data.url) {
+      try {
+        // Handle IPFS urls
+        const url = data.url.startsWith("ipfs://") 
+          ? `https://ipfs.io/ipfs/${data.url.slice(7)}`
+          : data.url;
+          
+        const metaResp = await fetch(url);
+        if (metaResp.ok) {
+          const meta = await metaResp.json();
+          name = meta.name || meta.givenName || "Unknown DRep";
+        }
+      } catch (e) {
+        console.warn("Failed to fetch DRep metadata:", e);
+      }
+    }
     
     return {
       drepId: data.drep_id,
@@ -1036,7 +1052,7 @@ export const getDRepInfo = async (drepId: string): Promise<DRepInfo | null> => {
       deposit: data.deposit,
       active: data.active,
       amount: data.amount,
-      name: "Unknown DRep", // Blockfrost basic endpoint might not return name directly without metadata parsing
+      name: name,
     };
   } catch (error) {
     console.warn("Error getting DRep info:", error);
