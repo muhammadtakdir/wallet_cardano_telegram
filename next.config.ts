@@ -28,7 +28,8 @@ const nextConfig: NextConfig = {
       config.externals = config.externals || [];
       config.externals.push({
         "@meshsdk/core": "commonjs @meshsdk/core",
-        "lucid-cardano": "commonjs lucid-cardano",
+        "@lucid-evolution/lucid": "commonjs @lucid-evolution/lucid",
+        "@lucid-evolution/utils": "commonjs @lucid-evolution/utils",
       });
     }
 
@@ -79,6 +80,26 @@ const nextConfig: NextConfig = {
       {
         protocol: "https",
         hostname: "gateway.pinata.cloud",
+        pathname: "/**",
+      },
+      {
+        protocol: "https",
+        hostname: "img.dexhunt.io",
+        pathname: "/**",
+      },
+      {
+        protocol: "https",
+        hostname: "app.dexhunter.io",
+        pathname: "/**",
+      },
+      {
+        protocol: "https",
+        hostname: "assets.coingecko.com",
+        pathname: "/**",
+      },
+      {
+        protocol: "https",
+        hostname: "tokens.muesliswap.com",
         pathname: "/**",
       },
     ],

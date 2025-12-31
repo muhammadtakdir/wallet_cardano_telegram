@@ -994,8 +994,8 @@ const DEFAULT_POOL_NAME = "Cardanesia";
 // GOVERNANCE / DREP FUNCTIONS
 // ================================
 
-// Default DRep ID (Placeholder - User should replace with active DRep)
-export const DEFAULT_DREP_ID = "drep1yfvngdk5pv943x3rauyxd300s93rjrx"; // Example Preprod DRep
+// Default DRep ID - Cardanesia DRep (Mainnet)
+export const DEFAULT_DREP_ID = "drep1nm3mpnnvtxvlmqt7lpnskm0clhtm7ngg4pm7qklv42j5qcvhhnw";
 
 export interface DRepInfo {
   drepId: string;
@@ -1047,11 +1047,9 @@ export const getDRepInfo = async (drepId: string): Promise<DRepInfo | null> => {
       }
     }
 
-    // Hardcode name for known default DRep if fetch failed
-    // Removed per user request: keep as "Unknown DRep" if metadata fetch fails
-    /* if (name === "Unknown DRep" && data.drep_id === DEFAULT_DREP_ID) {
-      name = "Cardanesia DRep";
-    } */
+    // Hardcode name for known default DRep if metadata fetch failed
+    // Keep as "Unknown DRep" since no metadata is available on-chain
+    // The DRep ID is still valid and can be used for delegation
     
     return {
       drepId: data.drep_id,

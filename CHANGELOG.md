@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.5.0] - 2024-12-31 - Token Swap Feature 🔄
+
+### Added
+- **DexHunter Swap Integration**: Token swap functionality using DexHunter API
+  - Custom swap UI with DexHunter API (not widget) for Telegram Wallet compatibility
+  - Server-side Lucid Evolution signing via `/api/dexhunter/lucid-sign` to handle stake key witnesses
+  - Swap estimates with price impact, min output, and route information
+  - Support for multiple DEXes aggregation (15+ DEXes)
+
+- **Token Selection**: Popular Cardano tokens with icons
+  - ADA (Cardano)
+  - NIGHT (DexHunter)
+  - MIN (Minswap)
+  - INDY (Indigo Protocol)
+  - AADA (AADA Finance)
+  - WRT (WingRiders)
+  - WMT (World Mobile Token)
+  - NMKR
+  - SUNDAE (SundaeSwap)
+
+- **Swap UI Features**:
+  - Token input/output selectors with balance display
+  - Slippage tolerance settings (0.5%, 1%, 2%, 3%)
+  - MAX button to use full balance (minus 5 ADA for fees)
+  - Swap direction toggle
+  - Real-time quote fetching with debounce
+  - Transaction status indicators (estimating, building, signing, submitting)
+  - Success message with Cardanoscan link
+
+- **"Powered by DexHunter"**: Branding link added below swap button
+
+### Technical
+- `dexhunter-api.ts`: Client-side API integration with internal routes to avoid CORS
+- `SwapScreen.tsx`: Custom swap UI component (replaced widget approach)
+- `/api/dexhunter/lucid-sign`: Server-side signing with Lucid Evolution for stake key witness
+- `/api/dexhunter/quote`, `/api/dexhunter/swap`: Proxy routes to DexHunter API
+- Token logos using MuesliSwap token registry and CoinGecko
+- Next.js image domains configured for external token icons
+
+### Fixed
+- DexHunter `amount_in` format: Uses human-readable amounts (e.g., 4 for 4 ADA), not lovelace
+- Blockfrost URL configuration for Lucid Evolution (requires `/api/v0` suffix)
+- MissingVKeyWitnessesUTXOW error: Server-side Lucid signing includes stake key witness
+
+---
+
 ## [Unreleased]
 
 ### Added

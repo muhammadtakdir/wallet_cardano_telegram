@@ -2,7 +2,7 @@ import { getBlockfrostApiKey, getBlockfrostUrl, type CardanoNetwork } from './ty
 import { validateMnemonic, normalizeMnemonic } from './mnemonic';
 
 /**
- * Lucid-based staking fallback for in-app wallet
+ * Lucid Evolution-based staking fallback for in-app wallet
  * @param mnemonic - BIP39 mnemonic phrase
  * @param poolId - Stake pool ID
  * @param network - Cardano network
@@ -29,19 +29,18 @@ export async function delegateToPoolLucid(
       return { success: false, error: 'Blockfrost API key not set for network: ' + network };
     }
 
-    // 3. Init Lucid (Dynamic Import to fix WASM issues)
-    const { Lucid, Blockfrost } = await import('lucid-cardano');
-    const lucid = await Lucid.new(
+    // 3. Init Lucid Evolution (Dynamic Import to fix WASM issues)
+    const { Lucid, Blockfrost } = await import('@lucid-evolution/lucid');
+    const lucid = await Lucid(
       new Blockfrost(blockfrostUrl, blockfrostKey),
       network === 'mainnet' ? 'Mainnet' : network === 'preprod' ? 'Preprod' : 'Preview'
     );
 
-    // 4. Restore wallet from mnemonic using Lucid's selectWalletFromSeed
-    // In Lucid 0.10.x, selectWalletFromSeed actually takes the mnemonic string.
+    // 4. Restore wallet from mnemonic using Lucid Evolution's selectWallet.fromSeed
     try {
-      lucid.selectWalletFromSeed(normalized);
+      lucid.selectWallet.fromSeed(normalized);
     } catch (mnemonicErr: any) {
-      console.error('[lucid-stake] selectWalletFromSeed failed:', mnemonicErr);
+      console.error('[lucid-stake] selectWallet.fromSeed failed:', mnemonicErr);
       return { 
         success: false, 
         error: 'Invalid mnemonic: ' + (mnemonicErr?.message || String(mnemonicErr)),
@@ -49,7 +48,7 @@ export async function delegateToPoolLucid(
       };
     }
 
-    const rewardAddress = await lucid.wallet.rewardAddress();
+    const rewardAddress = await lucid.wallet().rewardAddress();
     if (!rewardAddress) {
       return { success: false, error: 'Could not derive reward address from mnemonic' };
     }
@@ -71,17 +70,18 @@ export async function delegateToPoolLucid(
 
     // 6. Build, sign and submit delegation
     try {
-      let tx = lucid.newTx();
+      let txBuilder = lucid.newTx();
       
       // Register stake key if not active
       if (!isRegistered) {
-        tx = tx.registerStake(rewardAddress);
+        txBuilder = txBuilder.register.Stake(rewardAddress);
       }
       
-      tx = tx.delegateTo(rewardAddress, poolId);
+      // Lucid Evolution uses delegate.ToPool for pool delegation
+      txBuilder = txBuilder.delegate.ToPool(rewardAddress, poolId);
       
-      const txComplete = await tx.complete();
-      const signed = await txComplete.sign().complete();
+      const txComplete = await txBuilder.complete();
+      const signed = await txComplete.sign.withWallet().complete();
       const txHash = await signed.submit();
       return { success: true, txHash };
     } catch (err: any) {
@@ -101,13 +101,13 @@ async function initLucidFromMnemonic(mnemonic: string, network: CardanoNetwork) 
   const blockfrostUrl = getBlockfrostUrl(network);
   if (!blockfrostKey) throw new Error('Blockfrost API key not set for network: ' + network);
 
-  const { Lucid, Blockfrost } = await import('lucid-cardano');
-  const lucid = await Lucid.new(
+  const { Lucid, Blockfrost } = await import('@lucid-evolution/lucid');
+  const lucid = await Lucid(
     new Blockfrost(blockfrostUrl, blockfrostKey),
     network === 'mainnet' ? 'Mainnet' : network === 'preprod' ? 'Preprod' : 'Preview'
   );
   
-  lucid.selectWalletFromSeed(normalized);
+  lucid.selectWallet.fromSeed(normalized);
   return lucid;
 }
 
@@ -117,11 +117,11 @@ export async function registerStakeLucid(
 ): Promise<{ success: boolean; txHash?: string; error?: string; _debug?: any }> {
   try {
     const lucid = await initLucidFromMnemonic(mnemonic, network);
-    const rewardAddress = await lucid.wallet.rewardAddress();
+    const rewardAddress = await lucid.wallet().rewardAddress();
     if (!rewardAddress) return { success: false, error: 'Could not derive reward address' };
 
-    const tx = await lucid.newTx().registerStake(rewardAddress).complete();
-    const signed = await tx.sign().complete();
+    const tx = await lucid.newTx().register.Stake(rewardAddress).complete();
+    const signed = await tx.sign.withWallet().complete();
     const txHash = await signed.submit();
     return { success: true, txHash };
   } catch (err: any) {
@@ -136,15 +136,15 @@ export async function withdrawRewardsLucid(
 ): Promise<{ success: boolean; txHash?: string; error?: string; _debug?: any }> {
   try {
     const lucid = await initLucidFromMnemonic(mnemonic, network);
-    const rewardAddress = await lucid.wallet.rewardAddress();
+    const rewardAddress = await lucid.wallet().rewardAddress();
     if (!rewardAddress) return { success: false, error: 'Could not derive reward address' };
 
-    const delegation = await lucid.wallet.getDelegation();
+    const delegation = await lucid.wallet().getDelegation();
     const rewards = delegation?.rewards || BigInt(0);
     if (rewards === BigInt(0)) return { success: false, error: 'No rewards available to withdraw' };
 
     const tx = await lucid.newTx().withdraw(rewardAddress, rewards).complete();
-    const signed = await tx.sign().complete();
+    const signed = await tx.sign.withWallet().complete();
     const txHash = await signed.submit();
     return { success: true, txHash };
   } catch (err: any) {
@@ -159,11 +159,11 @@ export async function deregisterStakeLucid(
 ): Promise<{ success: boolean; txHash?: string; error?: string; _debug?: any }> {
   try {
     const lucid = await initLucidFromMnemonic(mnemonic, network);
-    const rewardAddress = await lucid.wallet.rewardAddress();
+    const rewardAddress = await lucid.wallet().rewardAddress();
     if (!rewardAddress) return { success: false, error: 'Could not derive reward address' };
 
-    const tx = await lucid.newTx().deregisterStake(rewardAddress).complete();
-    const signed = await tx.sign().complete();
+    const tx = await lucid.newTx().deregister.Stake(rewardAddress).complete();
+    const signed = await tx.sign.withWallet().complete();
     const txHash = await signed.submit();
     return { success: true, txHash };
   } catch (err: any) {
@@ -179,20 +179,26 @@ export async function delegateToDRepLucid(
 ): Promise<{ success: boolean; txHash?: string; error?: string; _debug?: any }> {
   try {
     const lucid = await initLucidFromMnemonic(mnemonic, network);
-    const rewardAddress = await lucid.wallet.rewardAddress();
+    const rewardAddress = await lucid.wallet().rewardAddress();
     if (!rewardAddress) return { success: false, error: 'Could not derive reward address' };
 
-    // Note: older Lucid versions might not support delegateToDRep.
-    // We cast to any to avoid TypeScript build errors for the missing property.
-    const txBuilder = lucid.newTx();
+    // Lucid Evolution has native DRep delegation support via delegate.VoteToDRep
+    const { drepIDToCredential } = await import('@lucid-evolution/lucid');
     
-    if (typeof (txBuilder as any).delegateToDRep !== 'function') {
-      console.warn('delegateToDRep not supported in this Lucid version');
-      return { success: false, error: 'Governance features require Lucid upgrade (Conway era)' };
+    let txBuilder = lucid.newTx();
+    
+    // Handle special DRep cases or convert DRep ID to credential
+    if (drepId === 'abstain' || drepId.toLowerCase().includes('abstain')) {
+      txBuilder = txBuilder.delegate.VoteToDRep(rewardAddress, { __typename: 'AlwaysAbstain' });
+    } else if (drepId === 'no-confidence' || drepId.toLowerCase().includes('no-confidence')) {
+      txBuilder = txBuilder.delegate.VoteToDRep(rewardAddress, { __typename: 'AlwaysNoConfidence' });
+    } else {
+      const drepCredential = drepIDToCredential(drepId);
+      txBuilder = txBuilder.delegate.VoteToDRep(rewardAddress, drepCredential);
     }
 
-    const tx = await (txBuilder as any).delegateToDRep(rewardAddress, drepId).complete();
-    const signed = await tx.sign().complete();
+    const tx = await txBuilder.complete();
+    const signed = await tx.sign.withWallet().complete();
     const txHash = await signed.submit();
     return { success: true, txHash };
   } catch (err: any) {

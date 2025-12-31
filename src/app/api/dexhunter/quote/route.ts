@@ -7,12 +7,17 @@ export async function POST(request: Request) {
     const apiKey = getDexHunterApiKey();
     const partnerName = process.env.DEXHUNTER_PARTNER_NAME;
 
-    // Inject partner info if not present
-    if (apiKey && !body.partnerCode) {
+    // Only inject partner info if valid (avoid "Invalid partner" error)
+    const isValidPartnerKey = apiKey && 
+      apiKey.length > 10 && 
+      !apiKey.includes('YOUR_') &&
+      !apiKey.includes('PLACEHOLDER');
+    
+    if (isValidPartnerKey) {
       body.partnerCode = apiKey;
-    }
-    if (partnerName && !body.partnerName) {
-      body.partnerName = partnerName;
+      if (partnerName) {
+        body.partnerName = partnerName;
+      }
     }
     
     const url = `${DEXHUNTER_API_URL}/swap/estimate`;
@@ -20,7 +25,7 @@ export async function POST(request: Request) {
       'Content-Type': 'application/json',
     };
 
-    if (apiKey) {
+    if (isValidPartnerKey) {
       headers['X-Partner-Id'] = apiKey;
     }
 

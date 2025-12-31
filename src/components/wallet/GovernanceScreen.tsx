@@ -51,7 +51,7 @@ export const GovernanceScreen: React.FC<GovernanceScreenProps> = ({ onBack }) =>
           deposit: "0",
           active: true,
           amount: "0",
-          name: "Default DRep",
+          name: "Unknown DRep",
         });
       }
     } catch (e) {
@@ -79,7 +79,7 @@ export const GovernanceScreen: React.FC<GovernanceScreenProps> = ({ onBack }) =>
           deposit: "0",
           active: true,
           amount: "0",
-          name: "Cardanesia DRep",
+          name: "Unknown DRep",
         });
         setStep("confirm");
       } else {
@@ -93,7 +93,7 @@ export const GovernanceScreen: React.FC<GovernanceScreenProps> = ({ onBack }) =>
           deposit: "0",
           active: true,
           amount: "0",
-          name: "Cardanesia DRep",
+          name: "Unknown DRep",
         });
         setStep("confirm");
       } else {
@@ -188,7 +188,7 @@ export const GovernanceScreen: React.FC<GovernanceScreenProps> = ({ onBack }) =>
             <div className="bg-gray-50 dark:bg-gray-800 p-3 rounded-lg flex justify-between items-center">
               <div className="overflow-hidden">
                 <p className="font-bold text-blue-600">
-                  {selectedDRep && selectedDRep.drepId === DEFAULT_DREP_ID ? selectedDRep.name || "Cardanesia DRep" : "Cardanesia DRep"}
+                  {selectedDRep?.name || "Unknown DRep"}
                 </p>
                 <p className="text-xs text-gray-500 font-mono truncate w-40">
                   {shortenAddress(DEFAULT_DREP_ID, 10)}
