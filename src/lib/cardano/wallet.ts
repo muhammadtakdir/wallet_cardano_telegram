@@ -1028,28 +1028,37 @@ export const getDRepInfo = async (drepId: string): Promise<DRepInfo | null> => {
 
     const data = await response.json();
     
-    // Fetch metadata if hash/url exists
-    let name = "Unknown DRep";
-    if (data.url) {
+    // Fetch metadata from Blockfrost metadata endpoint (more reliable than direct URL fetch)
+    let name = "";
+    try {
+      const metadataResponse = await fetch(
+        `${baseUrl}/governance/dreps/${drepId}/metadata`,
+        { headers: { project_id: apiKey } }
+      );
+      if (metadataResponse.ok) {
+        const metadata = await metadataResponse.json();
+        // CIP-119 compliant metadata structure
+        name = metadata.givenName || metadata.name || "";
+      }
+    } catch (e) {
+      console.warn("Failed to fetch DRep metadata from Blockfrost:", e);
+    }
+
+    // Fallback: try direct URL if Blockfrost metadata failed
+    if (!name && data.url) {
       try {
-        // Handle IPFS urls
         const url = data.url.startsWith("ipfs://") 
           ? `https://ipfs.io/ipfs/${data.url.slice(7)}`
           : data.url;
-          
-        const metaResp = await fetch(url);
+        const metaResp = await fetch(url, { signal: AbortSignal.timeout(5000) });
         if (metaResp.ok) {
           const meta = await metaResp.json();
-          name = meta.name || meta.givenName || "Unknown DRep";
+          name = meta.givenName || meta.name || "";
         }
       } catch (e) {
-        console.warn("Failed to fetch DRep metadata:", e);
+        // Silently fail - URL fetch is just a fallback
       }
     }
-
-    // Hardcode name for known default DRep if metadata fetch failed
-    // Keep as "Unknown DRep" since no metadata is available on-chain
-    // The DRep ID is still valid and can be used for delegation
     
     return {
       drepId: data.drep_id,
@@ -1059,7 +1068,7 @@ export const getDRepInfo = async (drepId: string): Promise<DRepInfo | null> => {
       deposit: data.deposit,
       active: data.active,
       amount: data.amount,
-      name: name,
+      name: name || undefined, // Return undefined instead of "Unknown DRep"
     };
   } catch (error) {
     console.warn("Error getting DRep info:", error);

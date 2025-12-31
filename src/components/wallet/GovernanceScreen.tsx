@@ -268,98 +268,104 @@ export const GovernanceScreen: React.FC<GovernanceScreenProps> = ({ onBack }) =>
     }
   };
 
-  // DRep Card Component
-  const DRepCard: React.FC<{ drep: DRepWithDelegators; onSelect: () => void }> = ({ drep, onSelect }) => (
-    <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
-      <div className="flex items-start justify-between mb-3">
-        <div className="flex items-center gap-3 flex-1 min-w-0">
-          {/* Avatar */}
-          <div className="w-10 h-10 rounded-full bg-gray-600 flex items-center justify-center flex-shrink-0 text-lg font-bold">
-            {drep.name?.[0]?.toUpperCase() || "?"}
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-bold text-white truncate">{drep.name || "Unknown"}</span>
-              <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                drep.active 
-                  ? "bg-green-500/20 text-green-400" 
-                  : "bg-red-500/20 text-red-400"
-              }`}>
-                {drep.active ? "Active" : "Inactive"}
-              </span>
+  // DRep Card Component - uses global theme
+  const DRepCard: React.FC<{ drep: DRepWithDelegators; onSelect: () => void }> = ({ drep, onSelect }) => {
+    // Display name or truncated ID if no name
+    const displayName = drep.name || shortenAddress(drep.drepId, 8);
+    const initial = drep.name?.[0]?.toUpperCase() || drep.drepId[4]?.toUpperCase() || "D";
+    
+    return (
+      <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700 shadow-sm">
+        <div className="flex items-start justify-between mb-3">
+          <div className="flex items-center gap-3 flex-1 min-w-0">
+            {/* Avatar */}
+            <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-gray-600 text-blue-600 dark:text-white flex items-center justify-center flex-shrink-0 text-lg font-bold">
+              {initial}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-bold text-gray-900 dark:text-white truncate">{displayName}</span>
+                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                  drep.active 
+                    ? "bg-green-100 dark:bg-green-500/20 text-green-600 dark:text-green-400" 
+                    : "bg-red-100 dark:bg-red-500/20 text-red-600 dark:text-red-400"
+                }`}>
+                  {drep.active ? "Active" : "Inactive"}
+                </span>
+              </div>
             </div>
           </div>
+          <Button size="sm" onClick={onSelect} className="ml-2 flex-shrink-0">
+            Delegate
+          </Button>
         </div>
-        <Button size="sm" onClick={onSelect} className="ml-2 flex-shrink-0">
-          Delegate
-        </Button>
-      </div>
-      
-      {/* DRep ID */}
-      <div className="mb-3">
-        <p className="text-xs text-gray-400 mb-1">DRep ID (CIP129)</p>
-        <p className="text-xs font-mono text-blue-400 break-all">
-          {drep.drepId}
-        </p>
-      </div>
-      
-      {/* Stats */}
-      <div className="flex gap-6 text-sm">
-        <div>
-          <p className="text-gray-400 text-xs">Delegators</p>
-          <p className="text-white font-semibold">{drep.delegatorsCount ?? "..."}</p>
-        </div>
-        <div>
-          <p className="text-gray-400 text-xs">Voting power</p>
-          <p className="text-white font-semibold">
-            {formatVotingPower(drep.amount)} ({formatADA(drep.amount)})
+        
+        {/* DRep ID */}
+        <div className="mb-3">
+          <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">DRep ID (CIP129)</p>
+          <p className="text-xs font-mono text-blue-600 dark:text-blue-400 break-all">
+            {drep.drepId}
           </p>
         </div>
+        
+        {/* Stats */}
+        <div className="flex gap-6 text-sm">
+          <div>
+            <p className="text-gray-500 dark:text-gray-400 text-xs">Delegators</p>
+            <p className="text-gray-900 dark:text-white font-semibold">{drep.delegatorsCount ?? "..."}</p>
+          </div>
+          <div>
+            <p className="text-gray-500 dark:text-gray-400 text-xs">Voting power</p>
+            <p className="text-gray-900 dark:text-white font-semibold">
+              {formatVotingPower(drep.amount)} ({formatADA(drep.amount)})
+            </p>
+          </div>
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   // Overview with DRep Search
   if (step === "overview") {
     return (
-      <div className="min-h-screen bg-gray-900 text-white">
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
         {/* Header */}
-        <header className="sticky top-0 bg-gray-900 z-10 px-4 py-3 border-b border-gray-800">
+        <header className="sticky top-0 bg-white dark:bg-gray-800 z-10 px-4 py-3 border-b border-gray-200 dark:border-gray-700 shadow-sm">
           <div className="flex items-center gap-3">
-            <button onClick={onBack} className="p-1">
+            <button onClick={onBack} className="p-1 text-gray-600 dark:text-gray-300">
               <BackIcon className="w-6 h-6" />
             </button>
-            <h1 className="text-xl font-bold">Governance</h1>
+            <h1 className="text-xl font-bold text-gray-900 dark:text-white">Governance</h1>
           </div>
         </header>
 
         <div className="p-4 space-y-4">
           {/* Current Delegation Status */}
-          <Card padding="lg" className="bg-gray-800 border-gray-700">
-            <h2 className="font-bold mb-2 text-white">Current Delegation</h2>
+          <Card padding="lg">
+            <h2 className="font-bold mb-2 text-gray-900 dark:text-white">Current Delegation</h2>
             {loadingCurrent ? (
-              <div className="flex items-center gap-2 text-gray-400">
+              <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
                 <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
                 <span className="text-sm">Loading...</span>
               </div>
             ) : currentDelegation ? (
-              <div className="bg-green-900/30 border border-green-800 p-3 rounded-lg">
+              <div className="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 p-3 rounded-lg">
                 <div className="flex items-center gap-2 mb-1">
-                  <span className="text-green-400">✓</span>
-                  <span className="font-semibold text-green-300">Delegated</span>
+                  <span className="text-green-600 dark:text-green-400">✓</span>
+                  <span className="font-semibold text-green-700 dark:text-green-300">Delegated</span>
                 </div>
                 {currentDelegation.name && (
-                  <p className="font-bold text-lg text-white">{currentDelegation.name}</p>
+                  <p className="font-bold text-lg text-gray-900 dark:text-white">{currentDelegation.name}</p>
                 )}
-                <p className="text-xs text-gray-400 font-mono break-all">
+                <p className="text-xs text-gray-600 dark:text-gray-400 font-mono break-all">
                   {currentDelegation.drepId}
                 </p>
               </div>
             ) : (
-              <div className="bg-yellow-900/30 border border-yellow-800 p-3 rounded-lg">
+              <div className="bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800 p-3 rounded-lg">
                 <div className="flex items-center gap-2">
-                  <span className="text-yellow-400">⚠</span>
-                  <span className="text-sm text-yellow-300">
+                  <span className="text-yellow-600 dark:text-yellow-400">⚠</span>
+                  <span className="text-sm text-yellow-700 dark:text-yellow-300">
                     Not delegated yet. Delegate to participate in governance.
                   </span>
                 </div>
@@ -369,12 +375,12 @@ export const GovernanceScreen: React.FC<GovernanceScreenProps> = ({ onBack }) =>
 
           {/* Staking Required Warning */}
           {!loadingCurrent && !stakingStatus.isStaked ? (
-            <Card padding="lg" className="bg-red-900/30 border-red-800">
+            <Card padding="lg" className="bg-red-50 dark:bg-red-900/30 border-red-200 dark:border-red-800">
               <div className="flex items-center gap-2 mb-2">
-                <span className="text-red-400 text-lg">⚠️</span>
-                <span className="font-semibold text-red-300">Staking Required</span>
+                <span className="text-red-600 dark:text-red-400 text-lg">⚠️</span>
+                <span className="font-semibold text-red-700 dark:text-red-300">Staking Required</span>
               </div>
-              <p className="text-sm text-red-300 mb-3">
+              <p className="text-sm text-red-700 dark:text-red-300 mb-3">
                 You must stake your ADA to a stake pool before delegating to a DRep.
               </p>
               <Button size="sm" onClick={onBack} className="bg-red-600 hover:bg-red-700">
@@ -384,10 +390,10 @@ export const GovernanceScreen: React.FC<GovernanceScreenProps> = ({ onBack }) =>
           ) : (
             <>
               {/* Available DReps Section */}
-              <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
-                <div className="p-4 border-b border-gray-700">
-                  <h2 className="text-lg font-bold text-center mb-1">Available DReps</h2>
-                  <p className="text-sm text-gray-400 text-center mb-4">
+              <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden shadow-sm">
+                <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+                  <h2 className="text-lg font-bold text-center mb-1 text-gray-900 dark:text-white">Available DReps</h2>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 text-center mb-4">
                     Type in a name to filter the list, or enter a DRep ID.
                   </p>
                   
@@ -400,12 +406,12 @@ export const GovernanceScreen: React.FC<GovernanceScreenProps> = ({ onBack }) =>
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         placeholder="Search by name or drep1..."
-                        className="w-full pl-9 pr-8 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
+                        className="w-full pl-9 pr-8 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
                       />
                       {searchQuery && (
                         <button 
                           onClick={() => setSearchQuery("")}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-white"
                         >
                           ✕
                         </button>
@@ -416,11 +422,11 @@ export const GovernanceScreen: React.FC<GovernanceScreenProps> = ({ onBack }) =>
                   {/* Sort & Actions */}
                   <div className="flex items-center justify-between mt-3">
                     <div className="flex items-center gap-2">
-                      <span className="text-sm text-gray-400">Sort by</span>
+                      <span className="text-sm text-gray-500 dark:text-gray-400">Sort by</span>
                       <select 
                         value={sortBy}
                         onChange={(e) => setSortBy(e.target.value as "power" | "delegators")}
-                        className="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-sm text-white"
+                        className="bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded px-2 py-1 text-sm text-gray-900 dark:text-white"
                       >
                         <option value="power">Voting Power</option>
                         <option value="delegators">Delegators</option>
@@ -433,7 +439,6 @@ export const GovernanceScreen: React.FC<GovernanceScreenProps> = ({ onBack }) =>
                         setShowDrepList(true);
                         if (drepList.length === 0) loadDRepList();
                       }}
-                      className="border-gray-600 text-gray-300"
                     >
                       {showDrepList ? "Hide list" : "Show DRep list"}
                     </Button>
@@ -451,24 +456,24 @@ export const GovernanceScreen: React.FC<GovernanceScreenProps> = ({ onBack }) =>
                     </Button>
                   )}
                   
-                  {error && <p className="text-red-400 text-sm mt-2">{error}</p>}
+                  {error && <p className="text-red-500 text-sm mt-2">{error}</p>}
                 </div>
 
                 {/* Default/Recommended DRep */}
                 {defaultDRep && (
-                  <div className="p-4 border-b border-gray-700">
-                    <p className="text-sm font-medium text-gray-400 mb-2">✨ Recommended DRep</p>
+                  <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-blue-50/50 dark:bg-blue-900/10">
+                    <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">✨ Recommended DRep</p>
                     <DRepCard drep={defaultDRep} onSelect={() => handleSelectDRep(defaultDRep)} />
                   </div>
                 )}
 
                 {/* DRep List */}
                 {showDrepList && (
-                  <div className="p-4 space-y-3 max-h-96 overflow-y-auto">
+                  <div className="p-4 space-y-3 max-h-96 overflow-y-auto bg-gray-50 dark:bg-gray-900/50">
                     {loadingDreps ? (
                       <div className="flex items-center justify-center py-8">
                         <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-                        <span className="ml-2 text-gray-400">Loading DReps...</span>
+                        <span className="ml-2 text-gray-500 dark:text-gray-400">Loading DReps...</span>
                       </div>
                     ) : filteredDreps.length > 0 ? (
                       filteredDreps.map((drep) => (
@@ -479,7 +484,7 @@ export const GovernanceScreen: React.FC<GovernanceScreenProps> = ({ onBack }) =>
                         />
                       ))
                     ) : (
-                      <p className="text-center text-gray-400 py-8">
+                      <p className="text-center text-gray-500 dark:text-gray-400 py-8">
                         {searchQuery ? "No DReps found matching your search" : "No DReps loaded yet"}
                       </p>
                     )}
@@ -495,49 +500,54 @@ export const GovernanceScreen: React.FC<GovernanceScreenProps> = ({ onBack }) =>
 
   // Confirm Step
   if (step === "confirm") {
+    const displayName = selectedDRep?.name || shortenAddress(selectedDRep?.drepId || "", 8);
+    const initial = selectedDRep?.name?.[0]?.toUpperCase() || selectedDRep?.drepId?.[4]?.toUpperCase() || "D";
+    
     return (
-      <div className="min-h-screen bg-gray-900 text-white p-4">
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-4">
         <header className="flex items-center gap-3 mb-6">
-          <button onClick={() => setStep("overview")}><BackIcon className="w-6 h-6" /></button>
-          <h1 className="text-xl font-bold">Confirm Delegation</h1>
+          <button onClick={() => setStep("overview")} className="text-gray-600 dark:text-gray-300">
+            <BackIcon className="w-6 h-6" />
+          </button>
+          <h1 className="text-xl font-bold text-gray-900 dark:text-white">Confirm Delegation</h1>
         </header>
         
-        <Card padding="lg" className="bg-gray-800 border-gray-700">
+        <Card padding="lg">
           {currentDelegation && (
-            <div className="mb-4 pb-4 border-b border-gray-700">
-              <p className="text-sm text-gray-400 mb-1">Current DRep:</p>
-              <p className="font-medium text-gray-300">
+            <div className="mb-4 pb-4 border-b border-gray-200 dark:border-gray-700">
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Current DRep:</p>
+              <p className="font-medium text-gray-700 dark:text-gray-300">
                 {currentDelegation.name || shortenAddress(currentDelegation.drepId, 12)}
               </p>
             </div>
           )}
           
-          <p className="text-sm text-gray-400">
+          <p className="text-sm text-gray-500 dark:text-gray-400">
             {currentDelegation ? "Change voting delegation to:" : "Delegate voting power to:"}
           </p>
           
           {/* Selected DRep Info */}
-          <div className="my-4 p-4 bg-gray-700 rounded-lg">
+          <div className="my-4 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
             <div className="flex items-center gap-3 mb-3">
-              <div className="w-12 h-12 rounded-full bg-gray-600 flex items-center justify-center text-xl font-bold">
-                {selectedDRep?.name?.[0]?.toUpperCase() || "?"}
+              <div className="w-12 h-12 rounded-full bg-blue-100 dark:bg-gray-600 text-blue-600 dark:text-white flex items-center justify-center text-xl font-bold">
+                {initial}
               </div>
               <div>
-                <p className="font-bold text-xl text-blue-400">{selectedDRep?.name || "Unknown"}</p>
+                <p className="font-bold text-xl text-blue-600 dark:text-blue-400">{displayName}</p>
                 <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
                   selectedDRep?.active 
-                    ? "bg-green-500/20 text-green-400" 
-                    : "bg-red-500/20 text-red-400"
+                    ? "bg-green-100 dark:bg-green-500/20 text-green-600 dark:text-green-400" 
+                    : "bg-red-100 dark:bg-red-500/20 text-red-600 dark:text-red-400"
                 }`}>
                   {selectedDRep?.active ? "Active" : "Inactive"}
                 </span>
               </div>
             </div>
-            <p className="text-xs font-mono text-gray-400 break-all">
+            <p className="text-xs font-mono text-gray-500 dark:text-gray-400 break-all">
               {selectedDRep?.drepId}
             </p>
             {selectedDRep?.amount && (
-              <p className="text-sm text-gray-400 mt-2">
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
                 Voting Power: {formatVotingPower(selectedDRep.amount)} ({formatADA(selectedDRep.amount)})
               </p>
             )}
@@ -557,10 +567,10 @@ export const GovernanceScreen: React.FC<GovernanceScreenProps> = ({ onBack }) =>
   // PIN Step
   if (step === "pin") {
     return (
-      <div className="min-h-screen bg-gray-900 text-white p-4 flex flex-col items-center justify-center">
-        <h1 className="text-xl font-bold mb-4">Enter PIN</h1>
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-4 flex flex-col items-center justify-center">
+        <h1 className="text-xl font-bold mb-4 text-gray-900 dark:text-white">Enter PIN</h1>
         <PinInput value={pin} onChange={setPin} onComplete={handlePinComplete} autoFocus />
-        {error && <p className="text-red-400 mt-2">{error}</p>}
+        {error && <p className="text-red-500 mt-2">{error}</p>}
       </div>
     );
   }
@@ -568,9 +578,9 @@ export const GovernanceScreen: React.FC<GovernanceScreenProps> = ({ onBack }) =>
   // Processing Step
   if (step === "processing") {
     return (
-      <div className="min-h-screen bg-gray-900 text-white flex flex-col items-center justify-center">
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col items-center justify-center">
         <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4" />
-        <p className="text-lg">Processing delegation...</p>
+        <p className="text-lg text-gray-900 dark:text-white">Processing delegation...</p>
       </div>
     );
   }
@@ -578,10 +588,10 @@ export const GovernanceScreen: React.FC<GovernanceScreenProps> = ({ onBack }) =>
   // Success Step
   if (step === "success") {
     return (
-      <div className="min-h-screen bg-gray-900 text-white p-4 flex flex-col items-center justify-center">
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-4 flex flex-col items-center justify-center">
         <div className="text-6xl mb-4">✅</div>
-        <h1 className="text-xl font-bold text-green-400 mb-2">Delegation Successful!</h1>
-        <p className="text-gray-400 mb-4 text-center">
+        <h1 className="text-xl font-bold text-green-600 dark:text-green-400 mb-2">Delegation Successful!</h1>
+        <p className="text-gray-500 dark:text-gray-400 mb-4 text-center">
           Tx Hash:<br />
           <span className="font-mono text-sm">{shortenAddress(txHash || "", 16)}</span>
         </p>
@@ -593,10 +603,10 @@ export const GovernanceScreen: React.FC<GovernanceScreenProps> = ({ onBack }) =>
   // Error Step
   if (step === "error") {
     return (
-      <div className="min-h-screen bg-gray-900 text-white p-4 flex flex-col items-center justify-center">
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-4 flex flex-col items-center justify-center">
         <div className="text-6xl mb-4">❌</div>
-        <h1 className="text-xl font-bold text-red-400 mb-2">Delegation Failed</h1>
-        <p className="text-gray-400 mb-4 text-center max-w-sm">{error}</p>
+        <h1 className="text-xl font-bold text-red-600 dark:text-red-400 mb-2">Delegation Failed</h1>
+        <p className="text-gray-500 dark:text-gray-400 mb-4 text-center max-w-sm">{error}</p>
         <Button onClick={() => setStep("overview")}>Try Again</Button>
       </div>
     );
