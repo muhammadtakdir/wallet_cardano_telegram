@@ -4,9 +4,27 @@ import * as React from "react";
 import { useWalletStore, useTelegram } from "@/hooks";
 import { hasStoredWallet, getWalletsList } from "@/lib/storage";
 import { isLockedOut, getLockoutRemaining } from "@/lib/storage/encryption";
-import { WalletDashboard, MnemonicDisplay, MnemonicInput, SendScreen, ReceiveScreen, AssetDetail, StakingScreen, SwapScreen, GovernanceScreen } from "@/components/wallet";
+import { WalletDashboard, MnemonicDisplay, MnemonicInput } from "@/components/wallet";
 import { Card, Button, PinInput, Input } from "@/components/ui";
 import { WalletAsset } from "@/lib/cardano";
+
+// Lazy load heavy components for better performance on low-end devices
+const SendScreen = React.lazy(() => import("@/components/wallet/SendScreen").then(m => ({ default: m.SendScreen })));
+const ReceiveScreen = React.lazy(() => import("@/components/wallet/ReceiveScreen").then(m => ({ default: m.ReceiveScreen })));
+const AssetDetail = React.lazy(() => import("@/components/wallet/AssetDetail").then(m => ({ default: m.AssetDetail })));
+const StakingScreen = React.lazy(() => import("@/components/wallet/StakingScreen").then(m => ({ default: m.StakingScreen })));
+const SwapScreen = React.lazy(() => import("@/components/wallet/SwapScreen").then(m => ({ default: m.SwapScreen })));
+const GovernanceScreen = React.lazy(() => import("@/components/wallet/GovernanceScreen").then(m => ({ default: m.GovernanceScreen })));
+
+// Loading fallback for lazy components
+const LazyLoadingFallback = () => (
+  <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+    <div className="text-center">
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-3" />
+      <p className="text-sm text-gray-500 dark:text-gray-400">Loading...</p>
+    </div>
+  </div>
+);
 
 type AppView = "loading" | "setup" | "create" | "import" | "import-pin" | "backup" | "unlock" | "dashboard" | "send" | "receive" | "asset-detail" | "staking" | "swap" | "governance";
 
@@ -510,36 +528,44 @@ export default function WalletPage() {
   // Render send screen
   if (view === "send") {
     return (
-      <SendScreen
-        onBack={() => setView("dashboard")}
-        onSuccess={(txHash) => {
-          console.log("Transaction sent:", txHash);
-          // Refresh balance after successful send
-          useWalletStore.getState().refreshBalance();
-        }}
-      />
+      <React.Suspense fallback={<LazyLoadingFallback />}>
+        <SendScreen
+          onBack={() => setView("dashboard")}
+          onSuccess={(txHash) => {
+            console.log("Transaction sent:", txHash);
+            // Refresh balance after successful send
+            useWalletStore.getState().refreshBalance();
+          }}
+        />
+      </React.Suspense>
     );
   }
 
   // Render receive screen
   if (view === "receive") {
-    return <ReceiveScreen onBack={() => setView("dashboard")} />;
+    return (
+      <React.Suspense fallback={<LazyLoadingFallback />}>
+        <ReceiveScreen onBack={() => setView("dashboard")} />
+      </React.Suspense>
+    );
   }
 
   // Render asset detail screen
   if (view === "asset-detail" && selectedAsset) {
     return (
-      <AssetDetail
-        asset={selectedAsset}
-        onBack={() => {
-          setSelectedAsset(null);
-          setView("dashboard");
-        }}
-        onSend={() => {
-          // TODO: Pre-select this asset in SendScreen
-          setView("send");
-        }}
-      />
+      <React.Suspense fallback={<LazyLoadingFallback />}>
+        <AssetDetail
+          asset={selectedAsset}
+          onBack={() => {
+            setSelectedAsset(null);
+            setView("dashboard");
+          }}
+          onSend={() => {
+            // TODO: Pre-select this asset in SendScreen
+            setView("send");
+          }}
+        />
+      </React.Suspense>
     );
   }
 
@@ -564,27 +590,33 @@ export default function WalletPage() {
   // Render staking
   if (view === "staking") {
     return (
-      <StakingScreen
-        onBack={() => setView("dashboard")}
-      />
+      <React.Suspense fallback={<LazyLoadingFallback />}>
+        <StakingScreen
+          onBack={() => setView("dashboard")}
+        />
+      </React.Suspense>
     );
   }
 
   // Render swap
   if (view === "swap") {
     return (
-      <SwapScreen
-        onBack={() => setView("dashboard")}
-      />
+      <React.Suspense fallback={<LazyLoadingFallback />}>
+        <SwapScreen
+          onBack={() => setView("dashboard")}
+        />
+      </React.Suspense>
     );
   }
 
   // Render governance
   if (view === "governance") {
     return (
-      <GovernanceScreen
-        onBack={() => setView("dashboard")}
-      />
+      <React.Suspense fallback={<LazyLoadingFallback />}>
+        <GovernanceScreen
+          onBack={() => setView("dashboard")}
+        />
+      </React.Suspense>
     );
   }
 

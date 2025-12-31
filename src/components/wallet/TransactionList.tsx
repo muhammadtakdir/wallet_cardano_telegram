@@ -17,23 +17,20 @@ export const TransactionList: React.FC<TransactionListProps> = ({
   isLoading = false,
   onTransactionClick,
 }) => {
-  // Debug logging
+  // Debug logging - only in development
   React.useEffect(() => {
-    console.log("=== TransactionList Debug ===");
-    console.log("transactions:", transactions);
-    console.log("transactions length:", transactions?.length);
-    if (transactions && transactions.length > 0) {
-      console.log("First transaction:", transactions[0]);
-      console.log("First tx hash:", transactions[0]?.hash, typeof transactions[0]?.hash);
-      console.log("First tx amount:", transactions[0]?.amount, typeof transactions[0]?.amount);
-      console.log("First tx blockTime:", transactions[0]?.blockTime, typeof transactions[0]?.blockTime);
+    if (process.env.NODE_ENV === 'development' && transactions?.length > 0) {
+      console.log("[TransactionList] Count:", transactions?.length);
     }
-    console.log("walletAddress:", walletAddress, typeof walletAddress);
-    console.log("=== End TransactionList Debug ===");
-  }, [transactions, walletAddress]);
+  }, [transactions?.length]);
 
   const [showAll, setShowAll] = React.useState(false);
-  const displayedTransactions = showAll ? transactions : transactions.slice(0, 3);
+  
+  // Memoize displayed transactions to avoid recalculation
+  const displayedTransactions = React.useMemo(() => 
+    showAll ? transactions : transactions.slice(0, 3),
+    [showAll, transactions]
+  );
 
   if (isLoading) {
     return (
@@ -99,7 +96,8 @@ interface TransactionItemProps {
   onClick?: () => void;
 }
 
-const TransactionItem: React.FC<TransactionItemProps> = ({
+// Memoized transaction item to prevent unnecessary re-renders
+const TransactionItem: React.FC<TransactionItemProps> = React.memo(({
   transaction,
   onClick,
 }) => {
@@ -185,7 +183,9 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
       <ChevronRightIcon className="w-5 h-5 text-gray-400" />
     </div>
   );
-};
+});
+
+TransactionItem.displayName = "TransactionItem";
 
 // Icons
 const EmptyIcon: React.FC<{ className?: string }> = ({ className }) => (

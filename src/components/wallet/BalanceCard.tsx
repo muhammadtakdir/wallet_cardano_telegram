@@ -101,18 +101,17 @@ export const BalanceCard: React.FC<BalanceCardProps> = ({
     };
     loadPrice();
     
-    // Refresh price every minute
-    const interval = setInterval(loadPrice, 60000);
+    // Refresh price every 2 minutes (reduced from 1 minute for better performance)
+    const interval = setInterval(loadPrice, 120000);
     return () => clearInterval(interval);
   }, [currency]);
 
-  // Debug logging
+  // Debug logging - only in development
   React.useEffect(() => {
-    console.log("=== BalanceCard Debug ===");
-    console.log("balance:", balance);
-    console.log("balance?.ada:", balance?.ada, typeof balance?.ada);
-    console.log("=== End BalanceCard Debug ===");
-  }, [balance, address, network]);
+    if (process.env.NODE_ENV === 'development') {
+      console.log("[BalanceCard] ADA:", balance?.ada);
+    }
+  }, [balance?.ada]);
 
   const handleCopyAddress = async () => {
     if (!address) return;

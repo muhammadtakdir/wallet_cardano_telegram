@@ -42,28 +42,19 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
     changeNetwork,
   } = useWalletStore();
 
-  // Debug logging
+  // Debug logging - only in development
   React.useEffect(() => {
-    console.log("=== WalletDashboard Debug ===");
-    debugLogObject("WalletData", {
-      walletAddress,
-      walletName,
-      balanceAda: balance?.ada,
-      balanceLovelace: balance?.lovelace,
-      balanceAssets: balance?.assets,
-      transactionsCount: transactions?.length,
-      network,
-      isLoading,
-      walletsCount: wallets?.length,
-    });
-    
-    // Check wallets array contents
-    if (wallets && wallets.length > 0) {
-      console.log("=== First Wallet Details ===");
-      debugLogObject("Wallet[0]", wallets[0] as unknown as Record<string, unknown>);
+    if (process.env.NODE_ENV === 'development') {
+      console.log("=== WalletDashboard Debug ===");
+      debugLogObject("WalletData", {
+        walletAddress,
+        balanceAda: balance?.ada,
+        network,
+        isLoading,
+        walletsCount: wallets?.length,
+      });
     }
-    console.log("=== End Debug ===");
-  }, [walletAddress, walletName, balance, transactions, network, isLoading, wallets]);
+  }, [walletAddress, balance?.ada, network, isLoading, wallets?.length]);
 
   const { isInTelegram, user, initData, hapticFeedback, showAlert } = useTelegram();
 

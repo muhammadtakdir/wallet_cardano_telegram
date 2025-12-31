@@ -18,7 +18,7 @@ export const AssetList: React.FC<AssetListProps> = ({ onAssetClick, onBack }) =>
 
   const assets = balance?.assets || [];
 
-  // Separate NFTs (quantity = 1) from tokens (quantity > 1)
+  // Memoize asset data to avoid recalculation
   const { tokens, nfts } = React.useMemo(() => {
     const tokens: WalletAsset[] = [];
     const nfts: WalletAsset[] = [];
@@ -36,6 +36,13 @@ export const AssetList: React.FC<AssetListProps> = ({ onAssetClick, onBack }) =>
   }, [assets]);
 
   const displayAssets = activeTab === "tokens" ? tokens : nfts;
+  
+  // Only render first 20 assets for performance (with load more option)
+  const [visibleCount, setVisibleCount] = React.useState(20);
+  const visibleAssets = React.useMemo(() => 
+    displayAssets.slice(0, visibleCount),
+    [displayAssets, visibleCount]
+  );
 
   if (assets.length === 0) {
     return (
@@ -86,7 +93,7 @@ export const AssetList: React.FC<AssetListProps> = ({ onAssetClick, onBack }) =>
         </Card>
       ) : (
         <div className="space-y-2">
-          {displayAssets.map((asset, index) => (
+          {visibleAssets.map((asset, index) => (
             <AssetItem
               key={`${asset.unit}-${index}`}
               asset={asset}
@@ -94,6 +101,15 @@ export const AssetList: React.FC<AssetListProps> = ({ onAssetClick, onBack }) =>
               onClick={() => onAssetClick?.(asset)}
             />
           ))}
+          {/* Load More Button */}
+          {displayAssets.length > visibleCount && (
+            <button
+              onClick={() => setVisibleCount(prev => prev + 20)}
+              className="w-full py-3 text-sm text-blue-600 dark:text-blue-400 font-medium hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl transition-colors"
+            >
+              Load More ({displayAssets.length - visibleCount} remaining)
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -106,9 +122,12 @@ interface AssetItemProps {
   onClick?: () => void;
 }
 
-export const AssetItem: React.FC<AssetItemProps> = ({ asset, isNFT = false, onClick }) => {
+// Memoized AssetItem to prevent re-renders
+export const AssetItem: React.FC<AssetItemProps> = React.memo(({ asset, isNFT = false, onClick }) => {
   const [priceAda, setPriceAda] = React.useState<string | null>(null);
   const [priceUsd, setPriceUsd] = React.useState<string | null>(null);
+  const [shouldLoadPrice, setShouldLoadPrice] = React.useState(false);
+  
   const displayName = React.useMemo(() => {
     // 1. Check metadata name
     if (asset.metadata?.name) {
@@ -141,7 +160,30 @@ export const AssetItem: React.FC<AssetItemProps> = ({ asset, isNFT = false, onCl
   const assetNameHex = asset.assetName || asset.unit.slice(56);
   const fingerprint = asset.fingerprint;
 
+  // Lazy load prices - only load when element is visible using Intersection Observer
+  const itemRef = React.useRef<HTMLDivElement>(null);
+  
   React.useEffect(() => {
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setShouldLoadPrice(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: '100px' }
+    );
+    
+    if (itemRef.current) {
+      observer.observe(itemRef.current);
+    }
+    
+    return () => observer.disconnect();
+  }, []);
+
+  React.useEffect(() => {
+    if (!shouldLoadPrice) return;
+    
     let cancelled = false;
     const fetchPrice = async () => {
       try {
@@ -179,10 +221,11 @@ export const AssetItem: React.FC<AssetItemProps> = ({ asset, isNFT = false, onCl
     };
     fetchPrice();
     return () => { cancelled = true; };
-  }, [asset.unit, policyId, assetNameHex]);
+  }, [shouldLoadPrice, asset.unit, policyId, assetNameHex]);
 
   return (
     <Card
+      ref={itemRef}
       padding="md"
       className="hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer transition-colors"
       onClick={onClick}
@@ -256,7 +299,9 @@ export const AssetItem: React.FC<AssetItemProps> = ({ asset, isNFT = false, onCl
       </div>
     </Card>
   );
-};
+});
+
+AssetItem.displayName = "AssetItem";
 
 // Format quantity with decimals
 function formatQuantity(quantity: string, decimals?: number): string {
