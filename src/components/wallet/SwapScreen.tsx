@@ -352,7 +352,7 @@ export const SwapScreen: React.FC<SwapScreenProps> = ({ onBack }) => {
 
           {/* Estimate Details */}
           {estimate && (
-            <div className={`p-2.5 rounded-xl text-xs ${isDark ? 'bg-gray-900' : 'bg-gray-50'} space-y-1`}>
+            <div className={`p-2.5 rounded-xl text-xs ${isDark ? 'bg-gray-900' : 'bg-gray-50'} space-y-1.5`}>
               <div className="flex justify-between">
                 <span className="text-gray-500">Price Impact</span>
                 <span className={parseFloat(String(estimate.price_impact || 0)) > 5 ? 'text-red-500' : 'text-green-500'}>
@@ -366,6 +366,70 @@ export const SwapScreen: React.FC<SwapScreenProps> = ({ onBack }) => {
               <div className="flex justify-between">
                 <span className="text-gray-500">Routes</span>
                 <span>{estimate.routes?.length || estimate.splits?.length || 1} DEX</span>
+              </div>
+              
+              {/* Fee Breakdown Section */}
+              <div className={`mt-2 pt-2 border-t ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-gray-500 font-medium">Fee Breakdown</span>
+                  <button 
+                    onClick={() => {
+                      const msg = `Fee Breakdown Explanation:
+
+• Network Fee (~0.17-0.25 ADA)
+  Paid to Cardano validators. Non-refundable.
+
+• DEX Batcher Fee (~2 ADA)
+  Required by Cardano UTxO model. Most of this (~1.7 ADA) is REFUNDED to you with your swap output.
+
+• DexHunter Fee (~0.5-1 ADA)
+  For finding the best price across DEXes. Non-refundable.
+
+💡 Actual cost is only ~0.8-1.5 ADA
+The rest comes back to you!`;
+                      alert(msg);
+                    }}
+                    className="text-blue-500 text-[10px] flex items-center gap-0.5"
+                  >
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Why?
+                  </button>
+                </div>
+                
+                {/* Network Fee */}
+                <div className="flex justify-between text-[11px]">
+                  <span className="text-gray-500">Network Fee</span>
+                  <span className="text-gray-600 dark:text-gray-400">~0.2 ADA</span>
+                </div>
+                
+                {/* Service Fee */}
+                <div className="flex justify-between text-[11px]">
+                  <span className="text-gray-500">Service Fee</span>
+                  <span className="text-gray-600 dark:text-gray-400">
+                    {estimate.total_fee ? `${(estimate.total_fee / 1_000_000).toFixed(2)} ADA` : '~1 ADA'}
+                  </span>
+                </div>
+                
+                {/* Refundable Deposit */}
+                <div className="flex justify-between text-[11px]">
+                  <div className="flex items-center gap-1">
+                    <span className="text-gray-500">UTxO Deposit</span>
+                    <span className="px-1 py-0.5 rounded text-[9px] bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 font-medium">
+                      REFUNDABLE
+                    </span>
+                  </div>
+                  <span className="text-green-600 dark:text-green-400">
+                    {estimate.deposits ? `~${(estimate.deposits / 1_000_000).toFixed(1)} ADA` : '~2 ADA'}
+                  </span>
+                </div>
+                
+                {/* Actual Cost */}
+                <div className={`flex justify-between text-[11px] mt-1.5 pt-1.5 border-t ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
+                  <span className="font-medium">Actual Cost</span>
+                  <span className="font-medium text-orange-500">~0.8-1.5 ADA</span>
+                </div>
               </div>
             </div>
           )}

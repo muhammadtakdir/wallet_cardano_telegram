@@ -530,137 +530,260 @@ export const StakingScreen: React.FC<StakingScreenProps> = ({ onBack }) => {
   }
 
   // =====================
-  // STEP: Search Pools
+  // STEP: Search Pools (Updated UI)
   // =====================
   if (step === "search") {
+    // Helper: Format ADA amount from lovelace
+    const formatPoolAda = (lovelace: string): string => {
+      const ada = parseInt(lovelace) / 1_000_000;
+      if (ada >= 1_000_000) {
+        return `₳ ${(ada / 1_000_000).toFixed(1)}M`;
+      } else if (ada >= 1_000) {
+        return `₳ ${ada.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+      }
+      return `₳ ${ada.toFixed(0)}`;
+    };
+
+    // Pool Card Component
+    const PoolCard: React.FC<{ pool: StakePoolInfo; rank?: number; onSelect: () => void }> = ({ pool, rank, onSelect }) => {
+      const initial = pool.ticker?.[0]?.toUpperCase() || "P";
+      
+      // Determine saturation color
+      const getSaturationColor = (sat: number) => {
+        if (sat >= 100) return "bg-red-500";
+        if (sat >= 80) return "bg-yellow-500";
+        return "bg-green-500";
+      };
+
+      // Determine ROS color
+      const getRosColor = (ros: number) => {
+        if (ros <= 0) return "text-red-500";
+        if (ros < 2) return "text-yellow-500";
+        return "text-green-500";
+      };
+      
+      return (
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700 shadow-sm">
+          {/* Header */}
+          <div className="flex items-start justify-between mb-3">
+            <div className="flex items-center gap-3 flex-1 min-w-0">
+              {/* Avatar */}
+              <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center flex-shrink-0 text-lg font-bold">
+                {initial}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-bold text-gray-900 dark:text-white truncate">
+                    [{pool.ticker}] {pool.name}
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400">
+                    SPO
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 text-xs text-gray-500">
+                  {rank && <span>#{rank}</span>}
+                  <span>•</span>
+                  <span>{pool.delegators} delegators</span>
+                </div>
+              </div>
+            </div>
+            <Button size="sm" onClick={onSelect} className="ml-2 flex-shrink-0">
+              Delegate
+            </Button>
+          </div>
+          
+          {/* Pool ID */}
+          <div className="mb-3">
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Pool ID</p>
+            <p className="text-xs font-mono text-blue-600 dark:text-blue-400 break-all">
+              {pool.poolId.slice(0, 30)}...<span className="text-pink-500">{pool.poolId.slice(-6)}</span>
+            </p>
+          </div>
+          
+          {/* Stats with colored bars */}
+          <div className="space-y-2">
+            {/* Saturation */}
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-gray-500 dark:text-gray-400 w-20">Saturation</span>
+              <div className="flex-1 mx-2">
+                <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                  <div 
+                    className={`h-full rounded-full ${getSaturationColor(pool.saturation)}`}
+                    style={{ width: `${Math.min(pool.saturation, 100)}%` }}
+                  />
+                </div>
+              </div>
+              <span className={`text-xs font-medium w-12 text-right ${
+                pool.saturation >= 80 ? "text-yellow-500" : "text-gray-700 dark:text-gray-300"
+              }`}>
+                {pool.saturation.toFixed(1)}%
+              </span>
+            </div>
+            
+            {/* Pledge */}
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-gray-500 dark:text-gray-400 w-20">Pledge</span>
+              <div className="flex-1 mx-2">
+                <div className="h-2 bg-green-500 rounded-full" />
+              </div>
+              <span className="text-xs font-medium text-gray-700 dark:text-gray-300 w-24 text-right">
+                {formatPoolAda(pool.pledge)}
+              </span>
+            </div>
+            
+            {/* Fees */}
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-gray-500 dark:text-gray-400 w-20">Fees</span>
+              <div className="flex-1 mx-2">
+                <div className="h-2 bg-green-500 rounded-full" />
+              </div>
+              <span className="text-xs font-medium text-gray-700 dark:text-gray-300 w-32 text-right">
+                {pool.margin.toFixed(1)}% ({formatPoolAda(pool.fixedCost)})
+              </span>
+            </div>
+            
+            {/* ROS */}
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-gray-500 dark:text-gray-400 w-20">ROS</span>
+              <div className="flex-1 mx-2">
+                <div className={`h-2 rounded-full ${pool.ros > 0 ? "bg-green-500" : "bg-red-500"}`} />
+              </div>
+              <span className={`text-xs font-medium w-12 text-right ${getRosColor(pool.ros)}`}>
+                {pool.ros.toFixed(2)}%
+              </span>
+            </div>
+          </div>
+        </div>
+      );
+    };
+
     return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-4">
-        <header className="flex items-center gap-3 mb-6">
-          <button onClick={() => setStep("overview")} className="p-2 hover:bg-gray-200 dark:hover:bg-gray-800 rounded-lg">
-            <BackIcon className="w-5 h-5 text-gray-600 dark:text-gray-400" />
-          </button>
-          <h1 className="text-xl font-bold text-gray-900 dark:text-white">
-            {searchQuery ? "Search Pools" : "Browse Pools"}
-          </h1>
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+        {/* Header - Modal Style */}
+        <header className="sticky top-0 bg-white dark:bg-gray-800 z-10 px-4 py-3 border-b border-gray-200 dark:border-gray-700 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div className="w-8" /> {/* Spacer */}
+            <h1 className="text-lg font-bold text-gray-900 dark:text-white">Available stake pools</h1>
+            <button 
+              onClick={() => setStep("overview")} 
+              className="p-1 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+            >
+              <CloseIcon className="w-6 h-6" />
+            </button>
+          </div>
         </header>
 
-        {/* Search Input */}
-        <div className="flex gap-2 mb-4">
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-            placeholder="Search by ticker or name..."
-            className="flex-1 px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-          />
-          <Button
-            variant="primary"
-            onClick={handleSearch}
-            disabled={isSearching}
-          >
-            {isSearching ? (
-              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white" />
-            ) : (
-              <SearchIcon className="w-5 h-5" />
+        <div className="p-4">
+          {/* Description */}
+          <p className="text-sm text-gray-500 dark:text-gray-400 text-center mb-4">
+            Here&apos;s a list of available stake pools. Enter a pool&apos;s ticker or name to filter the list. 
+            The ranking prioritizes the best rewards for you.
+          </p>
+          
+          {/* Search Input */}
+          <div className="relative mb-4">
+            <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                // Auto-search as user types (debounce would be ideal but simple approach)
+                if (!e.target.value) {
+                  loadTopPools(1);
+                }
+              }}
+              onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+              placeholder="Search by ticker or name..."
+              className="w-full pl-10 pr-10 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
+            />
+            {searchQuery && (
+              <button 
+                onClick={() => {
+                  setSearchQuery("");
+                  loadTopPools(1);
+                }}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              >
+                <CloseIcon className="w-5 h-5" />
+              </button>
             )}
-          </Button>
-        </div>
+          </div>
 
-        {/* Default Pool Suggestion - only show if not already delegated to it */}
-        {(!currentPool || currentPool.ticker !== "ADI") && (
-          <Card padding="md" className="mb-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800" onClick={() => {
-            handleLoadDefaultPool();
-          }}>
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center">
-                <StarIcon className="w-5 h-5 text-blue-600" />
-              </div>
-              <div className="flex-1">
-                <p className="font-medium text-gray-900 dark:text-white">[ADI] Cardanesia</p>
-                <p className="text-sm text-gray-500">Recommended Pool (if available)</p>
-              </div>
-              {isLoading ? (
-                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600" />
-              ) : (
-                <ChevronRightIcon className="w-5 h-5 text-gray-400" />
+          {/* Search Button (when there's a query) */}
+          {searchQuery && (
+            <Button
+              fullWidth
+              variant="primary"
+              onClick={handleSearch}
+              disabled={isSearching}
+              className="mb-4"
+            >
+              {isSearching ? "Searching..." : "Search Pools"}
+            </Button>
+          )}
+
+          {/* Error message */}
+          {error && (
+            <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+              <p className="text-sm text-yellow-800 dark:text-yellow-200">{error}</p>
+            </div>
+          )}
+
+          {/* Loading */}
+          {isSearching && (
+            <div className="flex items-center justify-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+              <span className="ml-2 text-gray-500">Loading pools...</span>
+            </div>
+          )}
+
+          {/* Pool List */}
+          {!isSearching && searchResults.length > 0 && (
+            <div className="space-y-3 pb-20">
+              {searchResults
+                .filter(pool => pool.poolId !== currentPool?.poolId)
+                .map((pool, index) => (
+                  <PoolCard 
+                    key={pool.poolId} 
+                    pool={pool} 
+                    rank={!searchQuery ? (page - 1) * 10 + index + 1 : undefined}
+                    onSelect={() => handleSelectPool(pool)}
+                  />
+                ))}
+
+              {/* Pagination Controls - Only show when NOT searching */}
+              {!searchQuery && (
+                <div className="flex justify-center gap-4 mt-6 pb-4">
+                  <Button 
+                    variant="outline" 
+                    onClick={handlePrevPage} 
+                    disabled={page === 1 || isSearching}
+                  >
+                    Previous
+                  </Button>
+                  <span className="flex items-center text-sm text-gray-500">
+                    Page {page}
+                  </span>
+                  <Button 
+                    variant="outline" 
+                    onClick={handleNextPage}
+                    disabled={isSearching}
+                  >
+                    Next
+                  </Button>
+                </div>
               )}
             </div>
-          </Card>
-        )}
+          )}
 
-        {/* Error message */}
-        {error && (
-          <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
-            <p className="text-sm text-yellow-800 dark:text-yellow-200">{error}</p>
-          </div>
-        )}
-
-        {/* Search Results */}
-        {searchResults.length > 0 && (
-          <div className="space-y-3 pb-8">
-            <p className="text-sm text-gray-500">
-              {searchQuery 
-                ? `${searchResults.filter(p => p.poolId !== currentPool?.poolId).length} pools found`
-                : `Top pools (Page ${page})`
-              }
-            </p>
-            {searchResults
-              .filter(pool => pool.poolId !== currentPool?.poolId)
-              .map((pool) => (
-              <Card
-                key={pool.poolId}
-                padding="md"
-                className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800"
-                onClick={() => handleSelectPool(pool)}
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center">
-                    <PoolIcon className="w-5 h-5 text-gray-600" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-medium text-gray-900 dark:text-white">
-                      [{pool.ticker}] {pool.name}
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      {pool.delegators} delegators • {pool.margin.toFixed(2)}% margin
-                    </p>
-                  </div>
-                  <ChevronRightIcon className="w-5 h-5 text-gray-400" />
-                </div>
-              </Card>
-            ))}
-
-            {/* Pagination Controls - Only show when NOT searching (browsing mode) */}
-            {!searchQuery && (
-              <div className="flex justify-center gap-4 mt-6">
-                <Button 
-                  variant="outline" 
-                  onClick={handlePrevPage} 
-                  disabled={page === 1 || isSearching}
-                >
-                  Previous
-                </Button>
-                <span className="flex items-center text-sm text-gray-500">
-                  Page {page}
-                </span>
-                <Button 
-                  variant="outline" 
-                  onClick={handleNextPage}
-                  disabled={isSearching}
-                >
-                  Next
-                </Button>
-              </div>
-            )}
-          </div>
-        )}
-
-        {searchQuery && searchResults.filter(p => p.poolId !== currentPool?.poolId).length === 0 && !isSearching && (
-          <div className="text-center py-8 text-gray-500">
-            No pools found for "{searchQuery}"
-          </div>
-        )}
+          {/* No Results */}
+          {!isSearching && searchQuery && searchResults.filter(p => p.poolId !== currentPool?.poolId).length === 0 && (
+            <div className="text-center py-8 text-gray-500">
+              No pools found for &quot;{searchQuery}&quot;
+            </div>
+          )}
+        </div>
       </div>
     );
   }
@@ -1032,6 +1155,12 @@ const CheckIcon: React.FC<{ className?: string }> = ({ className }) => (
 );
 
 const XIcon: React.FC<{ className?: string }> = ({ className }) => (
+  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+  </svg>
+);
+
+const CloseIcon: React.FC<{ className?: string }> = ({ className }) => (
   <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
   </svg>
