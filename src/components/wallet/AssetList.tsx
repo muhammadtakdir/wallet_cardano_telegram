@@ -238,18 +238,32 @@ export const AssetItem: React.FC<AssetItemProps> = React.memo(({
   onClick 
 }) => {
   const [tokenPriceAda, setTokenPriceAda] = React.useState<number | null>(null);
-  const [shouldLoadPrice, setShouldLoadPrice] = React.useState(false);
+  const [shouldLoadData, setShouldLoadData] = React.useState(false);
+  const [fetchedDecimals, setFetchedDecimals] = React.useState<number | null>(null);
+  const [fetchedName, setFetchedName] = React.useState<string | null>(null);
+  const [fetchedTicker, setFetchedTicker] = React.useState<string | null>(null);
+  const [fetchedLogo, setFetchedLogo] = React.useState<string | null>(null);
+  
+  const policyId = asset.policyId || asset.unit.slice(0, 56);
+  const assetNameHex = asset.assetName || asset.unit.slice(56);
+  const fingerprint = asset.fingerprint;
+  
+  // Use fetched decimals if available, otherwise fall back to metadata or 0
+  const decimals = isAda ? 6 : (fetchedDecimals ?? asset.metadata?.decimals ?? 0);
   
   const displayName = React.useMemo(() => {
     if (isAda) return "Cardano";
     
-    // 1. Check metadata name
+    // 1. Check fetched name first
+    if (fetchedName) return fetchedName;
+    
+    // 2. Check metadata name
     if (asset.metadata?.name) {
       return asset.metadata.name;
     }
     
-    // 2. Try to decode hex assetName
-    const nameHex = asset.assetName || (asset.unit.length > 56 ? asset.unit.slice(56) : "");
+    // 3. Try to decode hex assetName
+    const nameHex = assetNameHex;
     if (nameHex) {
       try {
         if (/^[0-9a-fA-F]+$/.test(nameHex)) {
@@ -264,17 +278,14 @@ export const AssetItem: React.FC<AssetItemProps> = React.memo(({
       return nameHex.length > 15 ? nameHex.slice(0, 10) + "..." : nameHex;
     }
     
-    // 3. Last fallback: Policy ID fragment
+    // 4. Last fallback: Policy ID fragment
     return asset.unit.slice(0, 8) + "..." + asset.unit.slice(-4);
-  }, [asset, isAda]);
+  }, [asset, isAda, fetchedName, assetNameHex]);
 
-  const ticker = isAda ? "ADA" : (asset.metadata?.ticker || "");
-  const policyId = asset.policyId || asset.unit.slice(0, 56);
-  const assetNameHex = asset.assetName || asset.unit.slice(56);
-  const fingerprint = asset.fingerprint;
-  const decimals = isAda ? 6 : (asset.metadata?.decimals || 0);
+  const ticker = isAda ? "ADA" : (fetchedTicker || asset.metadata?.ticker || "");
+  const logo = fetchedLogo || asset.metadata?.logo || null;
 
-  // Calculate quantity
+  // Calculate quantity with proper decimals
   const quantity = React.useMemo(() => {
     if (isAda) {
       return parseFloat(lovelaceToAda(asset.quantity));
@@ -282,7 +293,7 @@ export const AssetItem: React.FC<AssetItemProps> = React.memo(({
     return parseFloat(formatQuantity(asset.quantity, decimals));
   }, [asset.quantity, decimals, isAda]);
 
-  // Lazy load prices using Intersection Observer
+  // Lazy load token info and prices using Intersection Observer
   const itemRef = React.useRef<HTMLDivElement>(null);
   
   React.useEffect(() => {
@@ -294,7 +305,7 @@ export const AssetItem: React.FC<AssetItemProps> = React.memo(({
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting) {
-          setShouldLoadPrice(true);
+          setShouldLoadData(true);
           observer.disconnect();
         }
       },
@@ -308,17 +319,42 @@ export const AssetItem: React.FC<AssetItemProps> = React.memo(({
     return () => observer.disconnect();
   }, [isAda]);
 
+  // Fetch token metadata (including decimals) and price
   React.useEffect(() => {
-    if (!shouldLoadPrice || isAda) return;
+    if (!shouldLoadData || isAda) return;
     
     let cancelled = false;
-    const fetchPrice = async () => {
+    const fetchData = async () => {
       try {
         const tokenId = policyId + assetNameHex;
-        const priceRes = await fetch(`/api/dexhunter/price?token=${tokenId}`);
-        const priceData = await priceRes.json();
+        
+        // Fetch token info and price in parallel
+        const [infoRes, priceRes] = await Promise.all([
+          fetch(`/api/dexhunter/token-info?unit=${asset.unit}`),
+          fetch(`/api/dexhunter/price?token=${tokenId}`)
+        ]);
+        
+        const [infoData, priceData] = await Promise.all([
+          infoRes.json(),
+          priceRes.json()
+        ]);
         
         if (!cancelled) {
+          // Set token metadata
+          if (infoData.decimals !== undefined) {
+            setFetchedDecimals(infoData.decimals);
+          }
+          if (infoData.name) {
+            setFetchedName(infoData.name);
+          }
+          if (infoData.ticker) {
+            setFetchedTicker(infoData.ticker);
+          }
+          if (infoData.logo) {
+            setFetchedLogo(infoData.logo);
+          }
+          
+          // Set price
           setTokenPriceAda(priceData.price || 0);
         }
       } catch (e) {
@@ -327,9 +363,9 @@ export const AssetItem: React.FC<AssetItemProps> = React.memo(({
         }
       }
     };
-    fetchPrice();
+    fetchData();
     return () => { cancelled = true; };
-  }, [shouldLoadPrice, isAda, policyId, assetNameHex]);
+  }, [shouldLoadData, isAda, policyId, assetNameHex, asset.unit]);
 
   // Calculate values
   const valueInAda = tokenPriceAda !== null ? quantity * tokenPriceAda : null;
@@ -370,9 +406,11 @@ export const AssetItem: React.FC<AssetItemProps> = React.memo(({
           w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden
           ${iconConfig.bgColor} ${iconConfig.textColor}
         `}>
-          {asset.metadata?.logo && !isAda ? (
+          {isAda ? (
+            <AdaIcon className="w-7 h-7" />
+          ) : logo ? (
             <img
-              src={asset.metadata.logo}
+              src={logo.startsWith('ipfs://') ? `https://ipfs.io/ipfs/${logo.slice(7)}` : logo}
               alt={displayName}
               className="w-full h-full object-cover"
               onError={(e) => {
@@ -385,8 +423,6 @@ export const AssetItem: React.FC<AssetItemProps> = React.memo(({
                 }
               }}
             />
-          ) : isAda ? (
-            <AdaIcon className="w-6 h-6" />
           ) : isNFT ? (
             <NFTIcon className="w-6 h-6" />
           ) : (

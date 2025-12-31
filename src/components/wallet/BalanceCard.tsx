@@ -157,7 +157,7 @@ export const BalanceCard: React.FC<BalanceCardProps> = ({
     return { tokens, nfts, adaAsset, allAssetsWithAda };
   }, [balance?.assets, balance?.lovelace]);
 
-  // Fetch token prices and calculate total portfolio
+  // Fetch token info (decimals) and prices, calculate total portfolio
   React.useEffect(() => {
     if (!balance?.lovelace) return;
     
@@ -166,21 +166,29 @@ export const BalanceCard: React.FC<BalanceCardProps> = ({
       let totalInAda = adaAmount;
       const newPrices = new Map<string, number>();
       
-      // Fetch prices for tokens (not NFTs)
+      // Fetch prices and decimals for tokens (not NFTs)
       const pricePromises = tokens.map(async (token) => {
         try {
           const policyId = token.policyId || token.unit.slice(0, 56);
           const assetNameHex = token.assetName || token.unit.slice(56);
           const tokenId = policyId + assetNameHex;
           
-          const res = await fetch(`/api/dexhunter/price?token=${tokenId}`);
-          const data = await res.json();
-          const priceInAda = data.price || 0;
+          // Fetch both token info and price in parallel
+          const [infoRes, priceRes] = await Promise.all([
+            fetch(`/api/dexhunter/token-info?unit=${token.unit}`),
+            fetch(`/api/dexhunter/price?token=${tokenId}`)
+          ]);
           
+          const [infoData, priceData] = await Promise.all([
+            infoRes.json(),
+            priceRes.json()
+          ]);
+          
+          const priceInAda = priceData.price || 0;
           newPrices.set(token.unit, priceInAda);
           
-          // Calculate token value in ADA
-          const decimals = token.metadata?.decimals || 0;
+          // Use decimals from API, fallback to metadata, then 0
+          const decimals = infoData.decimals ?? token.metadata?.decimals ?? 0;
           const quantity = decimals > 0 
             ? parseFloat(token.quantity) / Math.pow(10, decimals)
             : parseFloat(token.quantity);
