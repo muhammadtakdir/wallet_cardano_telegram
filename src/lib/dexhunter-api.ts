@@ -457,17 +457,22 @@ export const POPULAR_TOKENS: Token[] = [
 
 /**
  * Sign and submit a DexHunter transaction using Lucid Evolution via server-side API.
- * This is needed because:
- * 1. MeshWallet doesn't include stake key witness for swap transactions
- * 2. Lucid Evolution can't run directly in browser due to CORS restrictions on Blockfrost
+ * 
+ * SECURITY: Mnemonic is sent via POST to server-side API for signing.
+ * - Mnemonic is NOT logged on client or server
+ * - Used only for in-memory transaction signing
+ * - Server immediately discards after use
  */
 export async function signAndSubmitWithLucid(
   unsignedTxCbor: string,
   mnemonic: string,
   network: 'mainnet' | 'preprod' = 'mainnet'
 ): Promise<string> {
-  console.log('[signAndSubmitWithLucid] Calling server-side API...');
-  
+  // Validate inputs
+  if (!unsignedTxCbor || !mnemonic) {
+    throw new Error('Missing required parameters');
+  }
+
   const response = await fetch('/api/dexhunter/lucid-sign', {
     method: 'POST',
     headers: {
@@ -483,11 +488,9 @@ export async function signAndSubmitWithLucid(
   const result = await response.json();
 
   if (!response.ok || result.error) {
-    console.error('[signAndSubmitWithLucid] API error:', result);
     throw new Error(result.error || 'Failed to sign and submit transaction');
   }
 
-  console.log('[signAndSubmitWithLucid] Transaction submitted:', result.txHash);
   return result.txHash;
 }
 
