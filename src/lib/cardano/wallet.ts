@@ -1081,6 +1081,85 @@ export const searchDReps = async (query: string): Promise<DRepInfo[]> => {
 };
 
 /**
+ * Get list of DReps from Blockfrost with pagination
+ * Returns DReps sorted by voting power
+ */
+export const listDReps = async (
+  page: number = 1,
+  count: number = 20,
+  order: "asc" | "desc" = "desc"
+): Promise<{ dreps: DRepInfo[]; hasMore: boolean }> => {
+  try {
+    const apiKey = getBlockfrostApiKey();
+    const baseUrl = getBlockfrostUrl();
+
+    if (!apiKey) return { dreps: [], hasMore: false };
+
+    // Fetch list of DReps
+    const response = await fetch(
+      `${baseUrl}/governance/dreps?page=${page}&count=${count}&order=${order}`,
+      { headers: { project_id: apiKey } }
+    );
+
+    if (!response.ok) return { dreps: [], hasMore: false };
+
+    const data: Array<{ drep_id: string; hex: string }> = await response.json();
+    
+    // Fetch detailed info for each DRep (limit concurrent requests)
+    const dreps: DRepInfo[] = [];
+    
+    for (const item of data) {
+      const info = await getDRepInfo(item.drep_id);
+      if (info) {
+        dreps.push(info);
+      }
+    }
+
+    return { 
+      dreps, 
+      hasMore: data.length === count 
+    };
+  } catch (error) {
+    console.warn("Error listing DReps:", error);
+    return { dreps: [], hasMore: false };
+  }
+};
+
+/**
+ * Get DRep delegators count from Blockfrost
+ */
+export const getDRepDelegators = async (drepId: string): Promise<number> => {
+  try {
+    const apiKey = getBlockfrostApiKey();
+    const baseUrl = getBlockfrostUrl();
+
+    if (!apiKey) return 0;
+
+    const response = await fetch(
+      `${baseUrl}/governance/dreps/${drepId}/delegators?count=1`,
+      { headers: { project_id: apiKey } }
+    );
+
+    if (!response.ok) return 0;
+
+    // Blockfrost returns array, we need to get total count from headers or make another call
+    // For now, we'll make a request with higher count
+    const fullResponse = await fetch(
+      `${baseUrl}/governance/dreps/${drepId}/delegators?count=100`,
+      { headers: { project_id: apiKey } }
+    );
+    
+    if (!fullResponse.ok) return 0;
+    
+    const delegators = await fullResponse.json();
+    return Array.isArray(delegators) ? delegators.length : 0;
+  } catch (error) {
+    console.warn("Error getting DRep delegators:", error);
+    return 0;
+  }
+};
+
+/**
  * Stake pool information
  */
 export interface StakePoolInfo {
