@@ -72,6 +72,7 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
   const [showNetworkSelector, setShowNetworkSelector] = React.useState(false);
   const [userPoints, setUserPoints] = React.useState<number | null>(null);
   const prevBalanceRef = React.useRef<number | null>(null);
+  const prevAssetsCountRef = React.useRef<number | null>(null);
 
   // Refresh data on mount
   React.useEffect(() => {
@@ -82,15 +83,15 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
     }
   }, [walletAddress, initData]);
 
-  // Track deposit rewards
+  // Track deposit rewards (ADA increase > 5 ADA)
   React.useEffect(() => {
     if (balance?.ada) {
       const currentBalance = parseFloat(balance.ada);
       if (prevBalanceRef.current !== null) {
         const diff = currentBalance - prevBalanceRef.current;
-        // If balance increased by > 5 ADA
+        // If balance increased by > 5 ADA, award deposit points (100 pts)
         if (diff > 5) {
-          console.log(`[Rewards] Deposit detected! Diff: ${diff} ADA`);
+          console.log(`[Rewards] ADA deposit detected! Diff: ${diff} ADA`);
           awardDepositPoints();
         }
       }
@@ -98,6 +99,22 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
     }
   }, [balance?.ada]);
 
+  // Track native token/NFT deposits (new assets received)
+  React.useEffect(() => {
+    if (balance?.assets) {
+      const currentAssetsCount = balance.assets.length;
+      if (prevAssetsCountRef.current !== null) {
+        // If user received new tokens/NFTs that weren't there before
+        if (currentAssetsCount > prevAssetsCountRef.current) {
+          console.log(`[Rewards] New token/NFT received! Previous: ${prevAssetsCountRef.current}, Current: ${currentAssetsCount}`);
+          awardDepositPoints();
+        }
+      }
+      prevAssetsCountRef.current = currentAssetsCount;
+    }
+  }, [balance?.assets]);
+
+  // Award deposit points (100 points for receiving 5+ ADA or any token/NFT)
   const awardDepositPoints = async () => {
     if (!initData) return;
     try {
@@ -108,6 +125,7 @@ export const WalletDashboard: React.FC<WalletDashboardProps> = ({
       });
       const data = await res.json();
       if (data.success) {
+        console.log(`[Rewards] +${data.added} points awarded for deposit!`);
         // Refresh points
         registerUser(); 
       }

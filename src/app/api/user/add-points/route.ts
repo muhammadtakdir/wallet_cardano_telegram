@@ -28,6 +28,16 @@ function verifyTelegramWebAppData(telegramInitData: string): boolean {
   return _hash === hash;
 }
 
+/**
+ * Points System:
+ * - swap: 100 points (successful token swap)
+ * - deposit: 100 points (receive 5+ ADA or any token/NFT)
+ * - send: 50 points (send ADA/token/NFT)
+ * - stake: 50 points (delegate to stake pool)
+ * - undelegate: 50 points (undelegate from stake pool)
+ * - drep: 50 points (delegate voting power to DRep)
+ * - withdraw: 50 points (withdraw staking rewards)
+ */
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -50,12 +60,33 @@ export async function POST(request: Request) {
     // Define points based on action
     let pointsToAdd = 0;
     switch (actionType) {
-      case 'deposit': pointsToAdd = 200; break;
-      case 'send': pointsToAdd = 200; break;
-      case 'stake': pointsToAdd = 200; break;
-      case 'undelegate': pointsToAdd = 200; break;
-      case 'swap': pointsToAdd = 1000; break;
-      default: return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
+      // High value actions - 100 points
+      case 'swap':
+        pointsToAdd = 100;
+        break;
+      case 'deposit':
+        pointsToAdd = 100;
+        break;
+      
+      // Standard actions - 50 points
+      case 'send':
+        pointsToAdd = 50;
+        break;
+      case 'stake':
+        pointsToAdd = 50;
+        break;
+      case 'undelegate':
+        pointsToAdd = 50;
+        break;
+      case 'drep':
+        pointsToAdd = 50;
+        break;
+      case 'withdraw':
+        pointsToAdd = 50;
+        break;
+      
+      default:
+        return NextResponse.json({ error: 'Invalid action type' }, { status: 400 });
     }
 
     // Increment points in database
@@ -74,7 +105,7 @@ export async function POST(request: Request) {
       }
     }
 
-    return NextResponse.json({ success: true, added: pointsToAdd });
+    return NextResponse.json({ success: true, added: pointsToAdd, action: actionType });
   } catch (error) {
     console.error('Add points API error:', error);
     return NextResponse.json({ error: 'Server error' }, { status: 500 });

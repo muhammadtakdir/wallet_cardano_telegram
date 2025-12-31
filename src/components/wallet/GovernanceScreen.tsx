@@ -25,6 +25,11 @@ interface CurrentDelegation {
   name?: string;
 }
 
+interface StakingStatus {
+  isStaked: boolean;
+  poolId?: string;
+}
+
 export const GovernanceScreen: React.FC<GovernanceScreenProps> = ({ onBack }) => {
   const { activeWalletId, network, _walletInstance } = useWalletStore();
   const { initData } = useTelegram();
@@ -38,6 +43,7 @@ export const GovernanceScreen: React.FC<GovernanceScreenProps> = ({ onBack }) =>
   const [isLoading, setIsLoading] = React.useState(false);
   const [currentDelegation, setCurrentDelegation] = React.useState<CurrentDelegation | null>(null);
   const [loadingCurrent, setLoadingCurrent] = React.useState(true);
+  const [stakingStatus, setStakingStatus] = React.useState<StakingStatus>({ isStaked: false });
 
   // Load current delegation and default DRep info
   React.useEffect(() => {
@@ -73,6 +79,13 @@ export const GovernanceScreen: React.FC<GovernanceScreenProps> = ({ onBack }) =>
 
       // Get staking info which includes drep_id
       const stakingInfo = await getStakingInfo(stakeAddress);
+      
+      // Check if user is staked to a pool
+      if (stakingInfo?.poolId) {
+        setStakingStatus({ isStaked: true, poolId: stakingInfo.poolId });
+      } else {
+        setStakingStatus({ isStaked: false });
+      }
       
       if (stakingInfo?.drepId) {
         // Fetch DRep name if possible
@@ -192,12 +205,12 @@ export const GovernanceScreen: React.FC<GovernanceScreenProps> = ({ onBack }) =>
         setTxHash(result.txHash);
         setStep("success");
         
-        // Award points
+        // Award points for DRep delegation (50 points)
         if (initData) {
           fetch("/api/user/add-points", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ initData, actionType: "stake" }), // Reusing 'stake' action for 1000 pts
+            body: JSON.stringify({ initData, actionType: "drep" }),
           }).catch(console.warn);
         }
       } else {
@@ -256,49 +269,72 @@ export const GovernanceScreen: React.FC<GovernanceScreenProps> = ({ onBack }) =>
           <h2 className="font-bold mb-2">
             {currentDelegation ? "Change Delegation" : "Delegate to DRep"}
           </h2>
-          <p className="text-sm text-gray-500 mb-4">
-            {currentDelegation 
-              ? "You can change your DRep delegation at any time."
-              : "Delegate your voting power to a DRep to participate in Cardano governance."
-            }
-          </p>
           
-          <div className="mb-4">
-            <label className="text-sm font-medium mb-1 block">Search DRep by ID</label>
-            <div className="flex gap-2">
-              <input 
-                value={drepId}
-                onChange={(e) => setDrepId(e.target.value)}
-                placeholder="drep1..."
-                className="flex-1 p-2 rounded border dark:bg-gray-800 dark:border-gray-700"
-              />
-              <Button onClick={() => handleSearch()} disabled={isLoading || !drepId}>
-                {isLoading ? "..." : "Search"}
-              </Button>
-            </div>
-            {error && <p className="text-red-500 text-sm mt-1">{error}</p>}
-          </div>
-
-          {/* Default Option */}
-          <div className="border-t dark:border-gray-700 pt-4">
-            <p className="text-sm font-medium mb-2">Recommended DRep</p>
-            <div className="bg-gray-50 dark:bg-gray-800 p-3 rounded-lg flex justify-between items-center">
-              <div className="overflow-hidden flex-1 mr-2">
-                <p className="font-bold text-blue-600 dark:text-blue-400">
-                  {selectedDRep?.name || "Loading..."}
-                </p>
-                <p className="text-xs text-gray-500 font-mono truncate">
-                  {shortenAddress(DEFAULT_DREP_ID, 10)}
-                </p>
+          {/* Check if user has staked to a pool first */}
+          {!loadingCurrent && !stakingStatus.isStaked ? (
+            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-4 rounded-lg">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-red-600 dark:text-red-400 text-lg">⚠️</span>
+                <span className="font-semibold text-red-700 dark:text-red-300">Staking Required</span>
               </div>
-              <Button size="sm" onClick={() => {
-                setDrepId(DEFAULT_DREP_ID);
-                handleSearch(DEFAULT_DREP_ID);
-              }} disabled={isLoading}>
-                Select
+              <p className="text-sm text-red-700 dark:text-red-300 mb-3">
+                You must stake your ADA to a stake pool before you can delegate your voting power to a DRep.
+              </p>
+              <Button 
+                size="sm" 
+                onClick={onBack}
+                className="bg-red-600 hover:bg-red-700"
+              >
+                Go to Staking
               </Button>
             </div>
-          </div>
+          ) : (
+            <>
+              <p className="text-sm text-gray-500 mb-4">
+                {currentDelegation 
+                  ? "You can change your DRep delegation at any time."
+                  : "Delegate your voting power to a DRep to participate in Cardano governance."
+                }
+              </p>
+              
+              <div className="mb-4">
+                <label className="text-sm font-medium mb-1 block">Search DRep by ID</label>
+                <div className="flex gap-2">
+                  <input 
+                    value={drepId}
+                    onChange={(e) => setDrepId(e.target.value)}
+                    placeholder="drep1..."
+                    className="flex-1 p-2 rounded border dark:bg-gray-800 dark:border-gray-700"
+                  />
+                  <Button onClick={() => handleSearch()} disabled={isLoading || !drepId}>
+                    {isLoading ? "..." : "Search"}
+                  </Button>
+                </div>
+                {error && <p className="text-red-500 text-sm mt-1">{error}</p>}
+              </div>
+
+              {/* Default Option */}
+              <div className="border-t dark:border-gray-700 pt-4">
+                <p className="text-sm font-medium mb-2">Recommended DRep</p>
+                <div className="bg-gray-50 dark:bg-gray-800 p-3 rounded-lg flex justify-between items-center">
+                  <div className="overflow-hidden flex-1 mr-2">
+                    <p className="font-bold text-blue-600 dark:text-blue-400">
+                      {selectedDRep?.name || "Loading..."}
+                    </p>
+                    <p className="text-xs text-gray-500 font-mono truncate">
+                      {shortenAddress(DEFAULT_DREP_ID, 10)}
+                    </p>
+                  </div>
+                  <Button size="sm" onClick={() => {
+                    setDrepId(DEFAULT_DREP_ID);
+                    handleSearch(DEFAULT_DREP_ID);
+                  }} disabled={isLoading}>
+                    Select
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
         </Card>
       </div>
     );
