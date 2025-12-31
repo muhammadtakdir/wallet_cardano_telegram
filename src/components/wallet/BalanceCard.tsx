@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { Card } from "@/components/ui";
-import { WalletBalance, shortenAddress, CardanoNetwork, WalletAsset } from "@/lib/cardano";
+import { WalletBalance, shortenAddress, CardanoNetwork, WalletAsset, lovelaceToAda } from "@/lib/cardano";
 import {
   type FiatCurrency,
   getCurrencyInfo,
@@ -15,6 +15,23 @@ import {
 } from "@/lib/currency";
 import { AssetItem } from "./AssetList";
 import { CurrencySelector } from "./CurrencySelector";
+
+// Create ADA asset from lovelace
+function createAdaAsset(lovelace: string): WalletAsset {
+  return {
+    unit: "lovelace",
+    quantity: lovelace,
+    policyId: "",
+    assetName: "ADA",
+    fingerprint: "",
+    metadata: {
+      name: "Cardano",
+      ticker: "ADA",
+      decimals: 6,
+      logo: "",
+    },
+  };
+}
 
 // Decode hex asset name to readable string
 function decodeAssetName(asset: WalletAsset): string {
@@ -84,6 +101,8 @@ export const BalanceCard: React.FC<BalanceCardProps> = ({
   const [adaPrice, setAdaPrice] = React.useState<number>(0);
   const [showCurrencySelector, setShowCurrencySelector] = React.useState(false);
   const [isPriceLoading, setIsPriceLoading] = React.useState(true);
+  const [totalPortfolioAda, setTotalPortfolioAda] = React.useState<number>(0);
+  const [tokenPrices, setTokenPrices] = React.useState<Map<string, number>>(new Map());
 
   // Load preferences on mount
   React.useEffect(() => {
@@ -112,6 +131,75 @@ export const BalanceCard: React.FC<BalanceCardProps> = ({
       console.log("[BalanceCard] ADA:", balance?.ada);
     }
   }, [balance?.ada]);
+
+  // Categorize assets - tokens vs NFTs
+  const { tokens, nfts, adaAsset, allAssetsWithAda } = React.useMemo(() => {
+    const tokens: WalletAsset[] = [];
+    const nfts: WalletAsset[] = [];
+    const assets = balance?.assets || [];
+    
+    // Create ADA asset
+    const adaAsset = balance?.lovelace ? createAdaAsset(balance.lovelace) : null;
+    
+    assets.forEach((asset) => {
+      if (asset.quantity === "1" && !asset.metadata?.decimals) {
+        nfts.push(asset);
+      } else {
+        tokens.push(asset);
+      }
+    });
+    
+    // All assets with ADA first
+    const allAssetsWithAda: WalletAsset[] = [];
+    if (adaAsset) allAssetsWithAda.push(adaAsset);
+    allAssetsWithAda.push(...tokens);
+    
+    return { tokens, nfts, adaAsset, allAssetsWithAda };
+  }, [balance?.assets, balance?.lovelace]);
+
+  // Fetch token prices and calculate total portfolio
+  React.useEffect(() => {
+    if (!balance?.lovelace) return;
+    
+    const fetchTokenPrices = async () => {
+      const adaAmount = parseFloat(lovelaceToAda(balance.lovelace));
+      let totalInAda = adaAmount;
+      const newPrices = new Map<string, number>();
+      
+      // Fetch prices for tokens (not NFTs)
+      const pricePromises = tokens.map(async (token) => {
+        try {
+          const policyId = token.policyId || token.unit.slice(0, 56);
+          const assetNameHex = token.assetName || token.unit.slice(56);
+          const tokenId = policyId + assetNameHex;
+          
+          const res = await fetch(`/api/dexhunter/price?token=${tokenId}`);
+          const data = await res.json();
+          const priceInAda = data.price || 0;
+          
+          newPrices.set(token.unit, priceInAda);
+          
+          // Calculate token value in ADA
+          const decimals = token.metadata?.decimals || 0;
+          const quantity = decimals > 0 
+            ? parseFloat(token.quantity) / Math.pow(10, decimals)
+            : parseFloat(token.quantity);
+          
+          return quantity * priceInAda;
+        } catch {
+          return 0;
+        }
+      });
+      
+      const tokenValues = await Promise.all(pricePromises);
+      const totalTokenValue = tokenValues.reduce((sum, val) => sum + val, 0);
+      
+      setTokenPrices(newPrices);
+      setTotalPortfolioAda(adaAmount + totalTokenValue);
+    };
+    
+    fetchTokenPrices();
+  }, [balance?.lovelace, tokens]);
 
   const handleCopyAddress = async () => {
     if (!address) return;
@@ -180,9 +268,8 @@ export const BalanceCard: React.FC<BalanceCardProps> = ({
     preview: "bg-purple-500",
   };
 
-  // Calculate fiat value
-  const adaAmount = parseFloat(balance?.ada || "0");
-  const fiatValue = convertAdaToFiat(adaAmount, adaPrice);
+  // Calculate fiat value based on total portfolio
+  const fiatValue = convertAdaToFiat(totalPortfolioAda, adaPrice);
   const currencyInfo = getCurrencyInfo(currency);
 
   return (
@@ -229,7 +316,7 @@ export const BalanceCard: React.FC<BalanceCardProps> = ({
             <>
               <div className="flex items-center justify-center gap-2">
                 <span className="text-4xl font-bold text-gray-900 dark:text-white">
-                  {isBalanceHidden ? "••••••" : String(balance?.ada || "0.000000")}
+                  {isBalanceHidden ? "••••••" : totalPortfolioAda.toLocaleString(undefined, { maximumFractionDigits: 6 })}
                 </span>
                 <span className="text-xl text-gray-500 dark:text-gray-400">ADA</span>
               </div>
@@ -304,24 +391,40 @@ export const BalanceCard: React.FC<BalanceCardProps> = ({
           </button>
         )}
 
-        {/* Assets Preview */}
-        {balance && balance.assets.length > 0 && (
+        {/* Assets Preview - ADA + Tokens + NFTs */}
+        {balance && (allAssetsWithAda.length > 0 || nfts.length > 0) && (
           <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
             <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
-              Native Assets ({balance.assets.length})
+              Native Assets ({allAssetsWithAda.length + nfts.length})
             </p>
-            <div className="space-y-2 max-h-48 overflow-y-auto">
-              {balance.assets.slice(0, 5).map((asset, index) => (
+            <div className="space-y-2 max-h-64 overflow-y-auto">
+              {/* Show ADA + tokens first, then NFTs */}
+              {allAssetsWithAda.slice(0, 5).map((asset, index) => (
                 <AssetItem
                   key={`${asset.unit}-${index}`}
                   asset={asset}
-                  isNFT={asset.quantity === "1"}
+                  isNFT={false}
+                  isAda={asset.unit === "lovelace"}
+                  adaPrice={adaPrice}
+                  currency={currency}
                   onClick={() => onAssetClick?.(asset)}
                 />
               ))}
-              {balance.assets.length > 5 && (
+              {/* Show NFTs if there's space */}
+              {allAssetsWithAda.length < 5 && nfts.slice(0, 5 - allAssetsWithAda.length).map((asset, index) => (
+                <AssetItem
+                  key={`nft-${asset.unit}-${index}`}
+                  asset={asset}
+                  isNFT={true}
+                  isAda={false}
+                  adaPrice={adaPrice}
+                  currency={currency}
+                  onClick={() => onAssetClick?.(asset)}
+                />
+              ))}
+              {(allAssetsWithAda.length + nfts.length) > 5 && (
                 <p className="text-xs text-center text-gray-500 dark:text-gray-400 pt-2">
-                  +{balance.assets.length - 5} more assets
+                  +{(allAssetsWithAda.length + nfts.length) - 5} more assets
                 </p>
               )}
             </div>
