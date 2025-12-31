@@ -324,7 +324,7 @@ export const BalanceCard: React.FC<BalanceCardProps> = ({
             <>
               <div className="flex items-center justify-center gap-2">
                 <span className="text-4xl font-bold text-gray-900 dark:text-white">
-                  {isBalanceHidden ? "••••••" : totalPortfolioAda.toLocaleString(undefined, { maximumFractionDigits: 6 })}
+                  {isBalanceHidden ? "••••••" : new Intl.NumberFormat('en-US', { maximumFractionDigits: 6 }).format(totalPortfolioAda)}
                 </span>
                 <span className="text-xl text-gray-500 dark:text-gray-400">ADA</span>
               </div>

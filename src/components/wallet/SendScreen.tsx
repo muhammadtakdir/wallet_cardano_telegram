@@ -405,23 +405,22 @@ export const SendScreen: React.FC<SendScreenProps> = ({ onBack, onSuccess }) => 
     }
   };
 
-  // Format quantity display - use consistent formatting without confusing locale separators
+  // Format quantity display - use international format (en-US)
   const formatQuantity = (amount: string, decimals: number, ticker?: string) => {
     const num = parseFloat(amount);
-    // Format with proper decimal places, using comma for thousands
-    const formatted = formatDisplayNumber(num, decimals);
+    const formatted = new Intl.NumberFormat('en-US', {
+      maximumFractionDigits: decimals,
+      minimumFractionDigits: 0,
+    }).format(num);
     return `${formatted} ${ticker || ""}`;
   };
 
-  // Format display number with comma separators (not locale-dependent)
+  // Format display number with international format (en-US)
   const formatDisplayNumber = (num: number, maxDecimals: number): string => {
-    const rounded = Math.round(num * Math.pow(10, maxDecimals)) / Math.pow(10, maxDecimals);
-    const [wholePart, decimalPart] = rounded.toString().split('.');
-    const formattedWhole = wholePart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-    if (decimalPart) {
-      return `${formattedWhole}.${decimalPart}`;
-    }
-    return formattedWhole;
+    return new Intl.NumberFormat('en-US', {
+      maximumFractionDigits: maxDecimals,
+      minimumFractionDigits: 0,
+    }).format(num);
   };
 
   // Format raw quantity with decimals (e.g., "57922633" with 6 decimals -> "57.922633")

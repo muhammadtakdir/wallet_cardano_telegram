@@ -518,22 +518,18 @@ function formatQuantity(quantity: string, decimals?: number): string {
   return `${whole}.${fractionStr.replace(/0+$/, "")}`;
 }
 
-// Format display quantity with thousand separators (comma style, not locale)
+// International number formatter (en-US: comma for thousands, dot for decimals)
+const intlFormatter = new Intl.NumberFormat('en-US', {
+  maximumFractionDigits: 6,
+  minimumFractionDigits: 0,
+});
+
+// Format display quantity with international format (en-US)
 function formatDisplayQuantity(num: number, maxDecimals: number = 6): string {
-  // Round to max decimals
-  const rounded = Math.round(num * Math.pow(10, maxDecimals)) / Math.pow(10, maxDecimals);
-  
-  // Split into whole and decimal parts
-  const [wholePart, decimalPart] = rounded.toString().split('.');
-  
-  // Add thousand separators to whole part (using comma)
-  const formattedWhole = wholePart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-  
-  // Return with decimal part if exists
-  if (decimalPart) {
-    return `${formattedWhole}.${decimalPart}`;
-  }
-  return formattedWhole;
+  return new Intl.NumberFormat('en-US', {
+    maximumFractionDigits: maxDecimals,
+    minimumFractionDigits: 0,
+  }).format(num);
 }
 
 // Icons
