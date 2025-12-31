@@ -89,42 +89,70 @@ export const SendScreen: React.FC<SendScreenProps> = ({ onBack, onSuccess }) => 
   };
 
   // Build available assets list
-  const availableAssets = React.useMemo<AvailableAsset[]>(() => {
-    const assets: AvailableAsset[] = [];
-    
-    // Add ADA
-    assets.push({
-      unit: "lovelace",
-      name: "Cardano",
-      ticker: "ADA",
-      type: "ada",
-      quantity: balance?.ada || "0",
-      decimals: 6,
-    });
-    
-    // Add native assets
-    if (balance?.assets) {
-      balance.assets.forEach((asset: WalletAsset) => {
-        const isNFT = asset.quantity === "1";
-        const displayName = asset.metadata?.name || 
-                          asset.assetName || 
-                          (asset.unit ? asset.unit.slice(56) : "Unknown Token");
-        
-        assets.push({
-          unit: asset.unit,
-          name: decodeAssetName(displayName),
-          ticker: asset.metadata?.ticker,
-          type: isNFT ? "nft" : "token",
-          quantity: asset.quantity,
-          decimals: asset.metadata?.decimals || 0,
-          image: asset.metadata?.logo,
-          policyId: asset.policyId || (asset.unit ? asset.unit.slice(0, 56) : undefined),
-          assetName: asset.assetName || (asset.unit ? asset.unit.slice(56) : undefined),
-        });
+  const [availableAssets, setAvailableAssets] = React.useState<AvailableAsset[]>([]);
+  const [isFetchingDecimals, setIsFetchingDecimals] = React.useState(false);
+  
+  // Fetch decimals for tokens and build available assets list
+  React.useEffect(() => {
+    const buildAssetsList = async () => {
+      const assets: AvailableAsset[] = [];
+      
+      // Add ADA
+      assets.push({
+        unit: "lovelace",
+        name: "Cardano",
+        ticker: "ADA",
+        type: "ada",
+        quantity: balance?.ada || "0",
+        decimals: 6,
       });
-    }
+      
+      // Add native assets with fetched decimals
+      if (balance?.assets && balance.assets.length > 0) {
+        setIsFetchingDecimals(true);
+        
+        const tokenPromises = balance.assets.map(async (asset: WalletAsset) => {
+          const isNFT = asset.quantity === "1" && !asset.metadata?.decimals;
+          const displayName = asset.metadata?.name || 
+                            asset.assetName || 
+                            (asset.unit ? asset.unit.slice(56) : "Unknown Token");
+          
+          // Fetch decimals from API for non-NFT tokens
+          let decimals = asset.metadata?.decimals || 0;
+          if (!isNFT && decimals === 0) {
+            try {
+              const res = await fetch(`/api/dexhunter/token-info?unit=${asset.unit}`);
+              const data = await res.json();
+              if (data.decimals !== undefined) {
+                decimals = data.decimals;
+              }
+            } catch {
+              // Keep default decimals
+            }
+          }
+          
+          return {
+            unit: asset.unit,
+            name: decodeAssetName(displayName),
+            ticker: asset.metadata?.ticker,
+            type: isNFT ? "nft" : "token",
+            quantity: asset.quantity,
+            decimals,
+            image: asset.metadata?.logo,
+            policyId: asset.policyId || (asset.unit ? asset.unit.slice(0, 56) : undefined),
+            assetName: asset.assetName || (asset.unit ? asset.unit.slice(56) : undefined),
+          } as AvailableAsset;
+        });
+        
+        const tokenAssets = await Promise.all(tokenPromises);
+        assets.push(...tokenAssets);
+        setIsFetchingDecimals(false);
+      }
+      
+      setAvailableAssets(assets);
+    };
     
-    return assets;
+    buildAssetsList();
   }, [balance]);
 
   // Get assets not yet added
@@ -220,10 +248,13 @@ export const SendScreen: React.FC<SendScreenProps> = ({ onBack, onSuccess }) => 
     if (!asset) return;
     
     if (unit === "lovelace") {
+      // For ADA, maxAmount is already in ADA format, subtract fee
       const max = Math.max(0, parseFloat(asset.maxAmount) - parseFloat(estimatedFee) - 1);
       updateAssetAmount(unit, max.toFixed(6));
     } else {
-      updateAssetAmount(unit, asset.maxAmount);
+      // For tokens, maxAmount is raw quantity - need to format with decimals
+      const formattedMax = formatRawQuantity(asset.maxAmount, asset.decimals);
+      updateAssetAmount(unit, formattedMax);
     }
   };
 
@@ -374,13 +405,41 @@ export const SendScreen: React.FC<SendScreenProps> = ({ onBack, onSuccess }) => 
     }
   };
 
-  // Format quantity display
+  // Format quantity display - use consistent formatting without confusing locale separators
   const formatQuantity = (amount: string, decimals: number, ticker?: string) => {
     const num = parseFloat(amount);
-    if (decimals > 0) {
-      return `${num.toLocaleString(undefined, { maximumFractionDigits: decimals })} ${ticker || ""}`;
+    // Format with proper decimal places, using comma for thousands
+    const formatted = formatDisplayNumber(num, decimals);
+    return `${formatted} ${ticker || ""}`;
+  };
+
+  // Format display number with comma separators (not locale-dependent)
+  const formatDisplayNumber = (num: number, maxDecimals: number): string => {
+    const rounded = Math.round(num * Math.pow(10, maxDecimals)) / Math.pow(10, maxDecimals);
+    const [wholePart, decimalPart] = rounded.toString().split('.');
+    const formattedWhole = wholePart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    if (decimalPart) {
+      return `${formattedWhole}.${decimalPart}`;
     }
-    return `${num.toLocaleString()} ${ticker || ""}`;
+    return formattedWhole;
+  };
+
+  // Format raw quantity with decimals (e.g., "57922633" with 6 decimals -> "57.922633")
+  const formatRawQuantity = (rawQuantity: string, decimals: number): string => {
+    if (!decimals || decimals === 0) {
+      return rawQuantity;
+    }
+    const num = BigInt(rawQuantity);
+    const divisor = BigInt(10 ** decimals);
+    const whole = num / divisor;
+    const fraction = num % divisor;
+    
+    if (fraction === BigInt(0)) {
+      return whole.toString();
+    }
+    
+    const fractionStr = fraction.toString().padStart(decimals, "0");
+    return `${whole}.${fractionStr.replace(/0+$/, "")}`;
   };
 
   // =====================
@@ -482,7 +541,10 @@ export const SendScreen: React.FC<SendScreenProps> = ({ onBack, onSuccess }) => 
                       <div>
                         <p className="font-medium text-gray-900 dark:text-white">{asset.name}</p>
                         <p className="text-xs text-gray-500">
-                          Balance: {formatQuantity(asset.maxAmount, asset.decimals, asset.ticker)}
+                          Balance: {asset.type === "ada" 
+                            ? formatQuantity(asset.maxAmount, asset.decimals, asset.ticker)
+                            : `${formatDisplayNumber(parseFloat(formatRawQuantity(asset.maxAmount, asset.decimals)), asset.decimals)} ${asset.ticker || ""}`
+                          }
                         </p>
                       </div>
                     </div>

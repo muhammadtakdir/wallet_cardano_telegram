@@ -469,11 +469,11 @@ export const AssetItem: React.FC<AssetItemProps> = React.memo(({
           {!isNFT && (
             <>
               <p className="font-bold text-gray-900 dark:text-white">
-                {quantity.toLocaleString(undefined, { maximumFractionDigits: isAda ? 2 : 4 })}
+                {formatDisplayQuantity(quantity, isAda ? 2 : 6)}
               </p>
               {valueInAda !== null && !isAda && (
                 <p className="text-xs text-gray-500 dark:text-gray-400">
-                  ≈ {valueInAda.toLocaleString(undefined, { maximumFractionDigits: 2 })} ADA
+                  ≈ {formatDisplayQuantity(valueInAda, 2)} ADA
                 </p>
               )}
               {valueInFiat !== null && (
@@ -499,7 +499,7 @@ export const AssetItem: React.FC<AssetItemProps> = React.memo(({
 
 AssetItem.displayName = "AssetItem";
 
-// Format quantity with decimals
+// Format quantity with decimals (raw string to number string)
 function formatQuantity(quantity: string, decimals?: number): string {
   const num = BigInt(quantity);
   if (!decimals || decimals === 0) {
@@ -516,6 +516,24 @@ function formatQuantity(quantity: string, decimals?: number): string {
   
   const fractionStr = fraction.toString().padStart(decimals, "0");
   return `${whole}.${fractionStr.replace(/0+$/, "")}`;
+}
+
+// Format display quantity with thousand separators (comma style, not locale)
+function formatDisplayQuantity(num: number, maxDecimals: number = 6): string {
+  // Round to max decimals
+  const rounded = Math.round(num * Math.pow(10, maxDecimals)) / Math.pow(10, maxDecimals);
+  
+  // Split into whole and decimal parts
+  const [wholePart, decimalPart] = rounded.toString().split('.');
+  
+  // Add thousand separators to whole part (using comma)
+  const formattedWhole = wholePart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  
+  // Return with decimal part if exists
+  if (decimalPart) {
+    return `${formattedWhole}.${decimalPart}`;
+  }
+  return formattedWhole;
 }
 
 // Icons
