@@ -1105,16 +1105,89 @@ export const getDRepInfo = async (drepId: string): Promise<DRepInfo | null> => {
 };
 
 /**
- * Search DReps (Mock implementation or limited ID lookup)
- * Real DRep search by name requires metadata indexer or specific Blockfrost endpoint
+ * Search DReps by name or ID using Koios API
+ * Only returns active (registered) DReps
  */
 export const searchDReps = async (query: string): Promise<DRepInfo[]> => {
-  // If query looks like a DRep ID, try to fetch it directly
-  if (query.startsWith("drep")) {
-    const info = await getDRepInfo(query);
-    return info ? [info] : [];
+  try {
+    // If query looks like a DRep ID, try to fetch it directly first
+    if (query.startsWith("drep")) {
+      const info = await getDRepInfo(query);
+      return info && info.active ? [info] : [];
+    }
+
+    // Search by name using internal API route to avoid CORS
+    const network = getCurrentNetwork();
+
+    // Fetch DReps list (registered only) via internal API
+    const response = await fetch(`/api/koios/dreps?search=${encodeURIComponent(query)}&network=${network}`, {
+      method: "GET",
+      headers: { "Accept": "application/json" },
+    });
+
+    if (!response.ok) return [];
+
+    const data = await response.json();
+    const searchLower = query.toLowerCase().trim();
+
+    // Filter and map results - only registered DReps matching search
+    const results: DRepInfo[] = (data || [])
+      .filter((item: { 
+        registered?: boolean;
+        drep_id?: string;
+        meta_json?: { body?: { givenName?: string; name?: string } };
+      }) => {
+        if (!item.registered) return false;
+        const name = item.meta_json?.body?.givenName || item.meta_json?.body?.name || "";
+        const drepId = item.drep_id || "";
+        return name.toLowerCase().includes(searchLower) || drepId.includes(query);
+      })
+      .slice(0, 20)
+      .map((item: {
+        drep_id?: string;
+        hex?: string;
+        url?: string;
+        hash?: string;
+        deposit?: string;
+        registered?: boolean;
+        amount?: string;
+        meta_json?: {
+          body?: {
+            givenName?: string;
+            name?: string;
+            image?: { url?: string } | string;
+            objectives?: string;
+            bio?: string;
+            motivations?: string;
+            references?: Array<{ uri?: string }>;
+          };
+        };
+      }) => {
+        const body = item.meta_json?.body;
+        const imageUrl = typeof body?.image === "string" 
+          ? body.image 
+          : body?.image?.url;
+        
+        return {
+          drepId: item.drep_id || "",
+          view: item.hex || "",
+          url: item.url,
+          metadataHash: item.hash,
+          deposit: item.deposit || "0",
+          active: item.registered ?? true,
+          amount: item.amount || "0",
+          name: body?.givenName || body?.name || undefined,
+          image: resolveIpfsUrl(imageUrl),
+          bio: body?.objectives || body?.bio || body?.motivations || undefined,
+          website: body?.references?.[0]?.uri || undefined,
+        };
+      });
+
+    return results;
+  } catch (error) {
+    console.warn("Error searching DReps:", error);
+    return [];
   }
-  return [];
 };
 
 /**
@@ -1138,13 +1211,9 @@ export const listDRepsFromKoios = async (
 ): Promise<{ dreps: DRepInfo[]; hasMore: boolean }> => {
   try {
     const network = getCurrentNetwork();
-    const koiosBase = network === "mainnet" 
-      ? "https://api.koios.rest/api/v1"
-      : "https://preprod.koios.rest/api/v1";
 
-    // Koios POST endpoint for DReps with filters
-    const offset = (page - 1) * count;
-    const response = await fetch(`${koiosBase}/drep_list?offset=${offset}&limit=${count}`, {
+    // Use internal API route to avoid CORS issues
+    const response = await fetch(`/api/koios/dreps?page=${page}&network=${network}`, {
       method: "GET",
       headers: {
         "Accept": "application/json",
@@ -1158,14 +1227,17 @@ export const listDRepsFromKoios = async (
 
     const data = await response.json();
     
-    // Map Koios response to DRepInfo format
-    const dreps: DRepInfo[] = (data || []).map((item: {
+    // Map Koios response to DRepInfo format - only include registered DReps
+    const dreps: DRepInfo[] = (data || [])
+      .filter((item: { registered?: boolean }) => item.registered === true)
+      .map((item: {
       drep_id?: string;
       hex?: string;
       url?: string;
       hash?: string;
       deposit?: string;
       active?: boolean;
+      registered?: boolean;
       amount?: string;
       meta_json?: {
         body?: {
@@ -1190,7 +1262,7 @@ export const listDRepsFromKoios = async (
         url: item.url,
         metadataHash: item.hash,
         deposit: item.deposit || "0",
-        active: item.active ?? true,
+        active: item.registered ?? true,
         amount: item.amount || "0",
         name: body?.givenName || body?.name || undefined,
         image: resolveIpfsUrl(imageUrl),
@@ -1211,7 +1283,7 @@ export const listDRepsFromKoios = async (
 
 /**
  * Get list of DReps from Blockfrost with pagination
- * Returns DReps sorted by voting power
+ * Returns only active DReps sorted by voting power
  */
 export const listDReps = async (
   page: number = 1,
@@ -1507,10 +1579,105 @@ export const getPoolInfo = async (poolId: string): Promise<StakePoolInfo | null>
 };
 
 /**
+ * Search stake pools by ticker or name using Koios API
+ * Only returns registered (active) pools, not retired pools
+ */
+export const searchPoolsFromKoios = async (query: string): Promise<StakePoolInfo[]> => {
+  try {
+    const network = getCurrentNetwork();
+
+    if (!query) return [];
+
+    const searchLower = query.toLowerCase().trim();
+
+    // Direct Pool ID lookup
+    if (searchLower.startsWith("pool1") && searchLower.length > 50) {
+      const pool = await getPoolInfo(searchLower);
+      // Check if pool is retired using Koios via internal API
+      if (pool) {
+        const response = await fetch(
+          `/api/koios/pools?search=${encodeURIComponent(searchLower)}&network=${network}`,
+          {
+            method: "GET",
+            headers: { "Accept": "application/json" },
+          }
+        );
+        if (response.ok) {
+          const data = await response.json();
+          // If pool not found in registered list, it might be retired
+          const found = data?.find((p: { pool_id_bech32?: string }) => p.pool_id_bech32 === searchLower);
+          if (!found || found.pool_status === "retired") return [];
+        }
+      }
+      return pool ? [pool] : [];
+    }
+
+    // Search pools using internal API route - only registered pools
+    const response = await fetch(
+      `/api/koios/pools?search=${encodeURIComponent(searchLower)}&network=${network}`,
+      {
+        method: "GET",
+        headers: { "Accept": "application/json" },
+      }
+    );
+
+    if (!response.ok) return [];
+
+    const pools = await response.json();
+    
+    // Filter pools by ticker or name (case insensitive)
+    const results: StakePoolInfo[] = (pools || [])
+      .filter((pool: { ticker?: string; pool_id_bech32?: string; pool_status?: string }) => {
+        // Only include registered pools
+        if (pool.pool_status !== "registered") return false;
+        const ticker = pool.ticker?.toLowerCase() || "";
+        return ticker.includes(searchLower);
+      })
+      .slice(0, 20)
+      .map((pool: {
+        pool_id_bech32?: string;
+        ticker?: string;
+        margin?: number;
+        fixed_cost?: string;
+        pledge?: string;
+        active_stake?: string;
+        retiring_epoch?: number | null;
+      }) => ({
+        poolId: pool.pool_id_bech32 || "",
+        ticker: pool.ticker || "Unknown",
+        name: pool.ticker || "Unknown Pool",
+        description: undefined,
+        homepage: undefined,
+        saturation: 0,
+        pledge: pool.pledge || "0",
+        margin: pool.margin ? pool.margin * 100 : 0,
+        fixedCost: pool.fixed_cost || "340000000",
+        activeStake: pool.active_stake || "0",
+        liveStake: pool.active_stake || "0",
+        blocksEpoch: 0,
+        blocksMinted: 0,
+        ros: 0,
+        delegators: 0,
+      }));
+
+    return results;
+  } catch (error) {
+    console.error("Error searching pools from Koios:", error);
+    return [];
+  }
+};
+
+/**
  * Search stake pools by ticker or name
+ * Only returns active pools (not retired)
  */
 export const searchPools = async (query: string): Promise<StakePoolInfo[]> => {
   try {
+    // Try Koios first for better filtering
+    const koiosResults = await searchPoolsFromKoios(query);
+    if (koiosResults.length > 0) return koiosResults;
+
+    // Fallback to Blockfrost
     const apiKey = getBlockfrostApiKey();
     const baseUrl = getBlockfrostUrl();
 
@@ -1524,7 +1691,14 @@ export const searchPools = async (query: string): Promise<StakePoolInfo[]> => {
       return pool ? [pool] : [];
     }
 
-    // 2. Search top pools (fetching more candidates, parallel processing)
+    // 2. Get list of retired pools to exclude them
+    const retiredResponse = await fetch(`${baseUrl}/pools/retired?count=100`, {
+      headers: { project_id: apiKey },
+    });
+    const retiredPools = retiredResponse.ok ? await retiredResponse.json() : [];
+    const retiredIds = new Set(retiredPools.map((p: { pool_id: string }) => p.pool_id));
+
+    // 3. Search top pools (fetching more candidates, parallel processing)
     // We fetch top 100 pools to have a decent candidate set
     const response = await fetch(`${baseUrl}/pools/extended?count=100&order=desc`, {
       headers: { project_id: apiKey },
@@ -1534,12 +1708,15 @@ export const searchPools = async (query: string): Promise<StakePoolInfo[]> => {
 
     const pools = await response.json();
     
+    // Filter out retired pools first
+    const activePools = pools.filter((p: { pool_id: string }) => !retiredIds.has(p.pool_id));
+    
     // Process pools in batches to avoid rate limits but improve speed
     const batchSize = 10;
     const results: StakePoolInfo[] = [];
     
-    // Check first 50 pools (most relevant usually)
-    const candidates = pools.slice(0, 50);
+    // Check first 50 active pools (most relevant usually)
+    const candidates = activePools.slice(0, 50);
     
     for (let i = 0; i < candidates.length; i += batchSize) {
       const batch = candidates.slice(i, i + batchSize);
@@ -1599,17 +1776,71 @@ export const searchPools = async (query: string): Promise<StakePoolInfo[]> => {
 
 /**
  * Get top pools (paginated) for browsing
+ * Only returns registered (active) pools, not retired pools
  */
 export const getTopPools = async (page: number = 1): Promise<StakePoolInfo[]> => {
   try {
+    // Use internal API route to avoid CORS issues
+    const network = getCurrentNetwork();
+    
+    const koiosResponse = await fetch(
+      `/api/koios/pools?page=${page}&network=${network}`,
+      {
+        method: "GET",
+        headers: { "Accept": "application/json" },
+      }
+    );
+
+    if (koiosResponse.ok) {
+      const pools = await koiosResponse.json();
+      
+      const results: StakePoolInfo[] = (pools || [])
+        .filter((pool: { pool_status?: string }) => pool.pool_status === "registered")
+        .map((pool: {
+          pool_id_bech32?: string;
+          ticker?: string;
+          margin?: number;
+          fixed_cost?: string;
+          pledge?: string;
+          active_stake?: string;
+          meta_url?: string;
+        }) => ({
+          poolId: pool.pool_id_bech32 || "",
+          ticker: pool.ticker || "Unknown",
+          name: pool.ticker || "Unknown Pool",
+          description: undefined,
+          homepage: undefined,
+          saturation: 0,
+          pledge: pool.pledge || "0",
+          margin: pool.margin ? pool.margin * 100 : 0,
+          fixedCost: pool.fixed_cost || "340000000",
+          activeStake: pool.active_stake || "0",
+          liveStake: pool.active_stake || "0",
+          blocksEpoch: 0,
+          blocksMinted: 0,
+          ros: 0,
+          delegators: 0,
+        }));
+      
+      if (results.length > 0) return results;
+    }
+
+    // Fallback to Blockfrost
     const apiKey = getBlockfrostApiKey();
     const baseUrl = getBlockfrostUrl();
 
     if (!apiKey) return [];
 
+    // Get list of retired pools to exclude them
+    const retiredResponse = await fetch(`${baseUrl}/pools/retired?count=100`, {
+      headers: { project_id: apiKey },
+    });
+    const retiredPools = retiredResponse.ok ? await retiredResponse.json() : [];
+    const retiredIds = new Set(retiredPools.map((p: { pool_id: string }) => p.pool_id));
+
     // Fetch pools sorted by stake (descending)
-    // count=20 per page
-    const response = await fetch(`${baseUrl}/pools/extended?count=20&page=${page}&order=desc`, {
+    // count=30 per page to compensate for retired pools
+    const response = await fetch(`${baseUrl}/pools/extended?count=30&page=${page}&order=desc`, {
       headers: { project_id: apiKey },
     });
 
@@ -1617,9 +1848,12 @@ export const getTopPools = async (page: number = 1): Promise<StakePoolInfo[]> =>
 
     const pools = await response.json();
     
+    // Filter out retired pools first
+    const activePools = pools.filter((p: { pool_id: string }) => !retiredIds.has(p.pool_id)).slice(0, 20);
+    
     // Fetch metadata in parallel
     const poolInfos = await Promise.all(
-      pools.map(async (pool: any) => {
+      activePools.map(async (pool: any) => {
         try {
           const metaResponse = await fetch(`${baseUrl}/pools/${pool.pool_id}/metadata`, {
             headers: { project_id: apiKey },

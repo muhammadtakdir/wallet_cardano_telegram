@@ -14,6 +14,7 @@ import {
   listDReps,
   listDRepsFromKoios,
   getDRepDelegators,
+  searchDReps,
 } from "@/lib/cardano";
 import { verifyPin, getStoredWalletForVerification, decryptWallet } from "@/lib/storage/encryption";
 
@@ -92,19 +93,47 @@ export const GovernanceScreen: React.FC<GovernanceScreenProps> = ({ onBack }) =>
     }
   }, [step, _walletInstance]);
 
-  // Filter DReps when search query changes
+  // Search DReps when search query changes (with debounce)
   React.useEffect(() => {
     if (!searchQuery.trim()) {
       setFilteredDreps(drepList);
       return;
     }
     
+    // If searching by ID, filter locally first
     const query = searchQuery.toLowerCase();
-    const filtered = drepList.filter(drep => 
-      drep.name?.toLowerCase().includes(query) ||
-      drep.drepId.toLowerCase().includes(query)
-    );
-    setFilteredDreps(filtered);
+    
+    // Debounce API call for search by name
+    const searchTimeout = setTimeout(async () => {
+      // If more than 2 characters and not just a DRep ID prefix, search via API
+      if (searchQuery.length >= 2 && !searchQuery.startsWith("drep1")) {
+        try {
+          const results = await searchDReps(searchQuery);
+          // Convert to DRepWithDelegators format
+          const drepsWithDelegators: DRepWithDelegators[] = results.map(drep => ({
+            ...drep,
+            delegatorsCount: 0
+          }));
+          setFilteredDreps(drepsWithDelegators);
+        } catch (e) {
+          // Fallback to local filter
+          const filtered = drepList.filter(drep => 
+            drep.name?.toLowerCase().includes(query) ||
+            drep.drepId.toLowerCase().includes(query)
+          );
+          setFilteredDreps(filtered);
+        }
+      } else {
+        // Local filter for DRep ID or short queries
+        const filtered = drepList.filter(drep => 
+          drep.name?.toLowerCase().includes(query) ||
+          drep.drepId.toLowerCase().includes(query)
+        );
+        setFilteredDreps(filtered);
+      }
+    }, 300);
+    
+    return () => clearTimeout(searchTimeout);
   }, [searchQuery, drepList]);
 
   // Sort DReps
