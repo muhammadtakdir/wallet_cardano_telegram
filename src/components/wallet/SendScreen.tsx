@@ -393,9 +393,13 @@ export const SendScreen: React.FC<SendScreenProps> = ({ onBack, onSuccess }) => 
               quantity: adaToLovelace(asset.amount),
             });
           } else {
+            // Convert to smallest unit based on decimals
+            // e.g., 10.5 with 6 decimals = 10500000
+            const multiplier = Math.pow(10, asset.decimals);
+            const rawQuantity = Math.floor(amount * multiplier).toString();
             outputs.push({
               unit: asset.unit,
-              quantity: asset.amount,
+              quantity: rawQuantity,
             });
           }
         }
