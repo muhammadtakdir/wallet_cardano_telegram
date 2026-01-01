@@ -284,6 +284,10 @@ export const SwapScreen: React.FC<SwapScreenProps> = ({ onBack }) => {
       setTxHash(hash);
       setStatus('success');
       
+      // Clear form after successful swap to prevent accidental re-swap
+      setAmountIn('');
+      setEstimate(null);
+      
       // Add points (non-blocking)
       if (initData) {
         fetch('/api/user/add-points', {

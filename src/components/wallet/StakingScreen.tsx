@@ -370,14 +370,11 @@ export const StakingScreen: React.FC<StakingScreenProps> = ({ onBack }) => {
 
               {stakingInfo?.active && currentPool && (
                 <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-4 mb-4">
-                  <div className="flex justify-between items-start">
+                  <div className="flex justify-between items-start mb-3">
                     <div>
                       <p className="text-xs text-blue-600 dark:text-blue-400 mb-1">Delegated to</p>
                       <p className="text-lg font-bold text-gray-900 dark:text-white">
                         [{currentPool.ticker}] {currentPool.name}
-                      </p>
-                      <p className="text-xs text-gray-500 font-mono mt-1">
-                        {currentPool.poolId.slice(0, 20)}...
                       </p>
                     </div>
                     <Button 
@@ -388,6 +385,56 @@ export const StakingScreen: React.FC<StakingScreenProps> = ({ onBack }) => {
                     >
                       Undelegate
                     </Button>
+                  </div>
+                  
+                  {/* Pool Details */}
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-500 dark:text-gray-400">Pool ID</span>
+                      <span className="text-xs font-mono text-gray-700 dark:text-gray-300 truncate max-w-[180px]">
+                        {currentPool.poolId}
+                      </span>
+                    </div>
+                    {currentPool.saturation !== undefined && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-500 dark:text-gray-400">Saturation</span>
+                        <span className={`font-medium ${currentPool.saturation > 90 ? 'text-red-500' : currentPool.saturation > 70 ? 'text-yellow-500' : 'text-green-500'}`}>
+                          {currentPool.saturation.toFixed(1)}%
+                        </span>
+                      </div>
+                    )}
+                    {currentPool.pledge && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-500 dark:text-gray-400">Pledge</span>
+                        <span className="text-gray-700 dark:text-gray-300">
+                          {formatAda(currentPool.pledge)} ₳
+                        </span>
+                      </div>
+                    )}
+                    {currentPool.margin !== undefined && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-500 dark:text-gray-400">Margin</span>
+                        <span className="text-gray-700 dark:text-gray-300">
+                          {(currentPool.margin * 100).toFixed(1)}%
+                        </span>
+                      </div>
+                    )}
+                    {currentPool.fixedCost && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-500 dark:text-gray-400">Fixed Cost</span>
+                        <span className="text-gray-700 dark:text-gray-300">
+                          {formatAda(currentPool.fixedCost)} ₳
+                        </span>
+                      </div>
+                    )}
+                    {currentPool.liveStake && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-500 dark:text-gray-400">Live Stake</span>
+                        <span className="text-gray-700 dark:text-gray-300">
+                          {formatAda(currentPool.liveStake)} ₳
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}

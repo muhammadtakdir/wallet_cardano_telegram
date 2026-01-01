@@ -26,6 +26,11 @@ type Step = "overview" | "search" | "confirm" | "pin" | "processing" | "success"
 interface CurrentDelegation {
   drepId: string;
   name?: string;
+  image?: string;
+  bio?: string;
+  website?: string;
+  amount?: string;
+  active?: boolean;
 }
 
 interface StakingStatus {
@@ -149,6 +154,11 @@ export const GovernanceScreen: React.FC<GovernanceScreenProps> = ({ onBack }) =>
         setCurrentDelegation({
           drepId: stakingInfo.drepId,
           name: drepInfo?.name || undefined,
+          image: drepInfo?.image || undefined,
+          bio: drepInfo?.bio || undefined,
+          website: drepInfo?.website || undefined,
+          amount: drepInfo?.amount || undefined,
+          active: drepInfo?.active,
         });
       } else {
         setCurrentDelegation(null);
@@ -378,16 +388,76 @@ export const GovernanceScreen: React.FC<GovernanceScreenProps> = ({ onBack }) =>
               </div>
             ) : currentDelegation ? (
               <div className="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 p-3 rounded-lg">
-                <div className="flex items-center gap-2 mb-1">
+                <div className="flex items-center gap-2 mb-2">
                   <span className="text-green-600 dark:text-green-400">✓</span>
                   <span className="font-semibold text-green-700 dark:text-green-300">Delegated</span>
                 </div>
-                {currentDelegation.name && (
-                  <p className="font-bold text-lg text-gray-900 dark:text-white">{currentDelegation.name}</p>
+                
+                {/* DRep Info with Image */}
+                <div className="flex items-start gap-3 mb-3">
+                  {currentDelegation.image ? (
+                    <img 
+                      src={currentDelegation.image} 
+                      alt={currentDelegation.name || "DRep"}
+                      className="w-12 h-12 rounded-full object-cover flex-shrink-0"
+                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                    />
+                  ) : (
+                    <div className="w-12 h-12 rounded-full bg-blue-100 dark:bg-blue-800 flex items-center justify-center flex-shrink-0">
+                      <span className="text-xl font-bold text-blue-600 dark:text-blue-300">
+                        {currentDelegation.name?.[0]?.toUpperCase() || "D"}
+                      </span>
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    {currentDelegation.name && (
+                      <p className="font-bold text-lg text-gray-900 dark:text-white">{currentDelegation.name}</p>
+                    )}
+                    <p className="text-xs text-gray-600 dark:text-gray-400 font-mono break-all">
+                      {currentDelegation.drepId}
+                    </p>
+                  </div>
+                </div>
+                
+                {/* DRep Bio */}
+                {currentDelegation.bio && (
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-3 line-clamp-2">
+                    {currentDelegation.bio}
+                  </p>
                 )}
-                <p className="text-xs text-gray-600 dark:text-gray-400 font-mono break-all">
-                  {currentDelegation.drepId}
-                </p>
+                
+                {/* DRep Details */}
+                <div className="space-y-1.5 text-sm border-t border-green-200 dark:border-green-800 pt-2 mt-2">
+                  {currentDelegation.amount && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-500 dark:text-gray-400">Voting Power</span>
+                      <span className="font-medium text-gray-700 dark:text-gray-300">
+                        {formatADA(currentDelegation.amount)} ({formatVotingPower(currentDelegation.amount)})
+                      </span>
+                    </div>
+                  )}
+                  {currentDelegation.active !== undefined && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-500 dark:text-gray-400">Status</span>
+                      <span className={`font-medium ${currentDelegation.active ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                        {currentDelegation.active ? 'Active' : 'Inactive'}
+                      </span>
+                    </div>
+                  )}
+                  {currentDelegation.website && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-500 dark:text-gray-400">Website</span>
+                      <a 
+                        href={currentDelegation.website} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="text-blue-500 hover:underline truncate max-w-[180px]"
+                      >
+                        {currentDelegation.website.replace(/^https?:\/\//, '')}
+                      </a>
+                    </div>
+                  )}
+                </div>
               </div>
             ) : (
               <div className="bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800 p-3 rounded-lg">
