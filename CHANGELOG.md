@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.5.1] - 2026-01-01 - DexHunter Token List Improvements 🔧
+
+### Fixed
+- **DexHunter API Response Structure**: Fixed parsing of token list response
+  - Handle nested `{ value: [...], Count: n }` response structure
+  - Use correct field names: `token_id`, `token_policy`, `token_ascii`, `token_decimals`
+  - Properly build token IDs from API response
+  - Now correctly displays verified tokens like HUNT
+
+- **Duplicate Key Errors**: Fixed React warnings for duplicate keys
+  - Use unique key generation with index prefix for all token lists
+  - Added `policy_id` and `ticker` as fallbacks for key uniqueness
+  - Fixed keys for wallet tokens, popular tokens, search results, and verified tokens
+
+- **Token Info API**: Enhanced `/api/dexhunter/token-info` endpoint
+  - Query DexHunter `/swap/token/{token_id}` for detailed token metadata
+  - Returns ticker, name, decimals, and logo from DexHunter registry
+  - Fallback to basic info if API unavailable
+
+### Changed
+- **Token List Label**: Changed "All Available Tokens" to "Verified Tokens"
+- **Verified Filter**: Added `verified=true` parameter to only show verified tokens
+- **Token Search**: Search now uses correct DexHunter response structure
+
+### Technical
+- `/api/dexhunter/tokens`: Proxy route to DexHunter `/swap/tokens` API with X-Partner-Id header
+- `/api/dexhunter/token-info`: New endpoint for single token metadata lookup
+- SwapScreen.tsx: Updated token mapping with correct field names from DexHunter API
+
+---
+
 ## [0.5.0] - 2024-12-31 - Token Swap Feature 🔄
 
 ### Added
