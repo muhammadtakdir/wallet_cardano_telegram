@@ -199,20 +199,23 @@ export const SwapScreen: React.FC<SwapScreenProps> = ({ onBack }) => {
       
       // If no local results or searching by long ID (policy ID), try API
       try {
-        // Search via internal API route (which adds X-Partner-Id header)
-        const res = await fetch(`/api/dexhunter/tokens?query=${encodeURIComponent(searchTerm)}`);
+        // Search via internal API route - only verified tokens
+        const res = await fetch(`/api/dexhunter/tokens?query=${encodeURIComponent(searchTerm)}&verified=true`);
         if (res.ok) {
           const data = await res.json();
           
-          // Map DexHunter response to Token format
-          const tokens: Token[] = (data || []).slice(0, 30).map((t: { policy_id?: string; token_ascii_name?: string; ticker?: string; token_name?: string; decimals?: number; logo?: string }) => ({
-            id: t.policy_id === '' ? '' : `${t.policy_id}${t.token_ascii_name || ''}`,
-            ticker: t.ticker || t.token_name || 'UNKNOWN',
-            name: t.token_name || t.ticker || 'Unknown',
-            decimals: t.decimals || 0,
-            logo: t.logo,
-            policyId: t.policy_id,
-          }));
+          // Map DexHunter response to Token format - filter out tokens without proper id
+          const tokens: Token[] = (data || [])
+            .filter((t: { policy_id?: string }) => t.policy_id !== undefined)
+            .slice(0, 30)
+            .map((t: { policy_id?: string; token_ascii_name?: string; ticker?: string; token_name?: string; decimals?: number; logo?: string }, index: number) => ({
+              id: t.policy_id === '' ? '' : `${t.policy_id}${t.token_ascii_name || ''}`,
+              ticker: t.ticker || t.token_name || 'UNKNOWN',
+              name: t.token_name || t.ticker || 'Unknown',
+              decimals: t.decimals || 0,
+              logo: t.logo,
+              policyId: t.policy_id,
+            }));
           
           setSearchResults(tokens);
         }
@@ -265,18 +268,21 @@ export const SwapScreen: React.FC<SwapScreenProps> = ({ onBack }) => {
       
       setLoadingAllTokens(true);
       try {
-        // Use internal API route (which adds X-Partner-Id header)
-        const res = await fetch('/api/dexhunter/tokens');
+        // Use internal API route - only verified tokens
+        const res = await fetch('/api/dexhunter/tokens?verified=true');
         if (res.ok) {
           const data = await res.json();
-          const tokens: Token[] = (data || []).map((t: { policy_id?: string; token_ascii_name?: string; ticker?: string; token_name?: string; decimals?: number; logo?: string }) => ({
-            id: t.policy_id === '' ? '' : `${t.policy_id}${t.token_ascii_name || ''}`,
-            ticker: t.ticker || t.token_name || 'UNKNOWN',
-            name: t.token_name || t.ticker || 'Unknown',
-            decimals: t.decimals || 0,
-            logo: t.logo,
-            policyId: t.policy_id,
-          }));
+          // Filter out tokens without proper id and map to Token format
+          const tokens: Token[] = (data || [])
+            .filter((t: { policy_id?: string }) => t.policy_id !== undefined)
+            .map((t: { policy_id?: string; token_ascii_name?: string; ticker?: string; token_name?: string; decimals?: number; logo?: string }) => ({
+              id: t.policy_id === '' ? '' : `${t.policy_id}${t.token_ascii_name || ''}`,
+              ticker: t.ticker || t.token_name || 'UNKNOWN',
+              name: t.token_name || t.ticker || 'Unknown',
+              decimals: t.decimals || 0,
+              logo: t.logo,
+              policyId: t.policy_id,
+            }));
           setAllDexTokens(tokens);
           
           // Cache to localStorage
@@ -765,9 +771,9 @@ The rest comes back to you!`;
               {tokenSearch.length >= 2 && searchResults.length > 0 && (
                 <>
                   <div className="px-2 py-1.5 text-xs font-semibold text-gray-500 uppercase">Search Results ({searchResults.length})</div>
-                  {searchResults.map((token) => (
+                  {searchResults.map((token, index) => (
                     <button
-                      key={token.id || 'ada'}
+                      key={token.id || `search-${index}-${token.ticker}`}
                       onClick={() => handleSelectToken(token)}
                       className={`w-full flex items-center gap-3 p-3 rounded-xl transition-colors ${isDark ? 'hover:bg-gray-800 active:bg-gray-700' : 'hover:bg-gray-100 active:bg-gray-200'}`}
                     >
@@ -845,17 +851,17 @@ The rest comes back to you!`;
               {tokenSearch.length < 2 && allDexTokens.length > 0 && (
                 <>
                   <div className="px-2 py-1.5 text-xs font-semibold text-gray-500 uppercase mt-2 flex items-center gap-2">
-                    All Available Tokens ({allDexTokens.length})
+                    Verified Tokens ({allDexTokens.length})
                     {loadingAllTokens && (
                       <div className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
                     )}
                   </div>
                   {allDexTokens
-                    .filter(at => !walletTokens.find(wt => wt.id === at.id) && !POPULAR_TOKENS.find(pt => pt.id === at.id))
+                    .filter(at => at.id && !walletTokens.find(wt => wt.id === at.id) && !POPULAR_TOKENS.find(pt => pt.id === at.id))
                     .slice(0, 100) // Show up to 100 tokens
-                    .map((token) => (
+                    .map((token, index) => (
                     <button
-                      key={token.id || `all-${token.ticker}`}
+                      key={token.id || `all-${index}-${token.ticker}`}
                       onClick={() => handleSelectToken(token)}
                       className={`w-full flex items-center gap-3 p-3 rounded-xl transition-colors ${isDark ? 'hover:bg-gray-800 active:bg-gray-700' : 'hover:bg-gray-100 active:bg-gray-200'}`}
                     >
