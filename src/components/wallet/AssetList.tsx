@@ -248,8 +248,23 @@ export const AssetItem: React.FC<AssetItemProps> = React.memo(({
   const assetNameHex = asset.assetName || asset.unit.slice(56);
   const fingerprint = asset.fingerprint;
   
-  // Use fetched decimals if available, otherwise fall back to metadata or 0
-  const decimals = isAda ? 6 : (fetchedDecimals ?? asset.metadata?.decimals ?? 0);
+  // Resolve decimals: prefer fetched, then metadata, otherwise default to 6 for fungible tokens
+  const decimals = React.useMemo(() => {
+    if (isAda) return 6;
+
+    const fetched = fetchedDecimals;
+    if (fetched !== null && fetched !== undefined && !Number.isNaN(Number(fetched))) {
+      return Number(fetched);
+    }
+
+    const metaDecimals = asset.metadata?.decimals;
+    if (metaDecimals !== null && metaDecimals !== undefined && !Number.isNaN(Number(metaDecimals))) {
+      return Number(metaDecimals);
+    }
+
+    // Default guess for fungible tokens when decimals are absent
+    return 6;
+  }, [isAda, fetchedDecimals, asset.metadata?.decimals]);
   
   const displayName = React.useMemo(() => {
     if (isAda) return "Cardano";

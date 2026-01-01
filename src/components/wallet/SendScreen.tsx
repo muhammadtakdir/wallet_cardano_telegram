@@ -118,17 +118,26 @@ export const SendScreen: React.FC<SendScreenProps> = ({ onBack, onSuccess }) => 
                             (asset.unit ? asset.unit.slice(56) : "Unknown Token");
           
           // Fetch decimals from API for non-NFT tokens
-          let decimals = asset.metadata?.decimals || 0;
-          if (!isNFT && decimals === 0) {
+          let decimals: number | null = asset.metadata?.decimals ?? null;
+          if (!isNFT && (decimals === null || Number.isNaN(Number(decimals)))) {
             try {
               const res = await fetch(`/api/dexhunter/token-info?unit=${asset.unit}`);
               const data = await res.json();
-              if (data.decimals !== undefined) {
-                decimals = data.decimals;
+              if (data.decimals !== undefined && data.decimals !== null) {
+                decimals = Number(data.decimals);
               }
             } catch {
-              // Keep default decimals
+              // Keep default decimals guess below
             }
+          }
+
+          // Default guess for fungible tokens when decimals are absent
+          if (!isNFT && (decimals === null || Number.isNaN(Number(decimals)))) {
+            decimals = 6;
+          }
+
+          if (isNFT) {
+            decimals = 0;
           }
           
           return {
@@ -137,7 +146,7 @@ export const SendScreen: React.FC<SendScreenProps> = ({ onBack, onSuccess }) => 
             ticker: asset.metadata?.ticker,
             type: isNFT ? "nft" : "token",
             quantity: asset.quantity,
-            decimals,
+            decimals: decimals ?? 6,
             image: asset.metadata?.logo,
             policyId: asset.policyId || (asset.unit ? asset.unit.slice(0, 56) : undefined),
             assetName: asset.assetName || (asset.unit ? asset.unit.slice(56) : undefined),
