@@ -203,18 +203,20 @@ export const SwapScreen: React.FC<SwapScreenProps> = ({ onBack }) => {
         const res = await fetch(`/api/dexhunter/tokens?query=${encodeURIComponent(searchTerm)}&verified=true`);
         if (res.ok) {
           const data = await res.json();
+          // Handle nested response - DexHunter returns { value: [...], Count: n }
+          const tokenList = Array.isArray(data) ? data : (data?.value || []);
           
-          // Map DexHunter response to Token format - filter out tokens without proper id
-          const tokens: Token[] = (data || [])
-            .filter((t: { policy_id?: string }) => t.policy_id !== undefined)
+          // Map DexHunter response to Token format
+          const tokens: Token[] = tokenList
+            .filter((t: { token_id?: string; token_policy?: string }) => t.token_id && t.token_policy)
             .slice(0, 30)
-            .map((t: { policy_id?: string; token_ascii_name?: string; ticker?: string; token_name?: string; decimals?: number; logo?: string }, index: number) => ({
-              id: t.policy_id === '' ? '' : `${t.policy_id}${t.token_ascii_name || ''}`,
-              ticker: t.ticker || t.token_name || 'UNKNOWN',
-              name: t.token_name || t.ticker || 'Unknown',
-              decimals: t.decimals || 0,
+            .map((t: { token_id?: string; token_policy?: string; token_ascii?: string; ticker?: string; token_decimals?: number; logo?: string; is_verified?: boolean }) => ({
+              id: t.token_id || '',
+              ticker: t.ticker || t.token_ascii || 'UNKNOWN',
+              name: t.token_ascii || t.ticker || 'Unknown',
+              decimals: t.token_decimals || 0,
               logo: t.logo,
-              policyId: t.policy_id,
+              policyId: t.token_policy,
             }));
           
           setSearchResults(tokens);
@@ -272,16 +274,19 @@ export const SwapScreen: React.FC<SwapScreenProps> = ({ onBack }) => {
         const res = await fetch('/api/dexhunter/tokens?verified=true');
         if (res.ok) {
           const data = await res.json();
-          // Filter out tokens without proper id and map to Token format
-          const tokens: Token[] = (data || [])
-            .filter((t: { policy_id?: string }) => t.policy_id !== undefined)
-            .map((t: { policy_id?: string; token_ascii_name?: string; ticker?: string; token_name?: string; decimals?: number; logo?: string }) => ({
-              id: t.policy_id === '' ? '' : `${t.policy_id}${t.token_ascii_name || ''}`,
-              ticker: t.ticker || t.token_name || 'UNKNOWN',
-              name: t.token_name || t.ticker || 'Unknown',
-              decimals: t.decimals || 0,
+          // Handle nested response - DexHunter returns { value: [...], Count: n }
+          const tokenList = Array.isArray(data) ? data : (data?.value || []);
+          
+          // Map DexHunter response to Token format
+          const tokens: Token[] = tokenList
+            .filter((t: { token_id?: string; token_policy?: string }) => t.token_id && t.token_policy)
+            .map((t: { token_id?: string; token_policy?: string; token_ascii?: string; ticker?: string; token_decimals?: number; logo?: string; is_verified?: boolean }) => ({
+              id: t.token_id || '',
+              ticker: t.ticker || t.token_ascii || 'UNKNOWN',
+              name: t.token_ascii || t.ticker || 'Unknown',
+              decimals: t.token_decimals || 0,
               logo: t.logo,
-              policyId: t.policy_id,
+              policyId: t.token_policy,
             }));
           setAllDexTokens(tokens);
           
@@ -773,7 +778,7 @@ The rest comes back to you!`;
                   <div className="px-2 py-1.5 text-xs font-semibold text-gray-500 uppercase">Search Results ({searchResults.length})</div>
                   {searchResults.map((token, index) => (
                     <button
-                      key={token.id || `search-${index}-${token.ticker}`}
+                      key={`search-${index}-${token.id || token.policyId || token.ticker || 'unknown'}`}
                       onClick={() => handleSelectToken(token)}
                       className={`w-full flex items-center gap-3 p-3 rounded-xl transition-colors ${isDark ? 'hover:bg-gray-800 active:bg-gray-700' : 'hover:bg-gray-100 active:bg-gray-200'}`}
                     >
@@ -809,9 +814,9 @@ The rest comes back to you!`;
                       <div className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
                     )}
                   </div>
-                  {walletTokens.map((token) => (
+                  {walletTokens.map((token, index) => (
                     <button
-                      key={token.id || 'ada-wallet'}
+                      key={`wallet-${index}-${token.id || token.policyId || token.ticker || 'unknown'}`}
                       onClick={() => handleSelectToken(token)}
                       className={`w-full flex items-center gap-3 p-3 rounded-xl transition-colors ${isDark ? 'hover:bg-gray-800 active:bg-gray-700' : 'hover:bg-gray-100 active:bg-gray-200'}`}
                     >
@@ -830,9 +835,9 @@ The rest comes back to you!`;
               {tokenSearch.length < 2 && (
                 <>
                   <div className="px-2 py-1.5 text-xs font-semibold text-gray-500 uppercase mt-2">Popular Tokens</div>
-                  {POPULAR_TOKENS.filter(pt => !walletTokens.find(wt => wt.id === pt.id)).map((token) => (
+                  {POPULAR_TOKENS.filter(pt => !walletTokens.find(wt => wt.id === pt.id)).map((token, index) => (
                     <button
-                      key={token.id || 'ada-popular'}
+                      key={`popular-${index}-${token.id || token.policyId || token.ticker || 'unknown'}`}
                       onClick={() => handleSelectToken(token)}
                       className={`w-full flex items-center gap-3 p-3 rounded-xl transition-colors ${isDark ? 'hover:bg-gray-800 active:bg-gray-700' : 'hover:bg-gray-100 active:bg-gray-200'}`}
                     >
@@ -861,7 +866,7 @@ The rest comes back to you!`;
                     .slice(0, 100) // Show up to 100 tokens
                     .map((token, index) => (
                     <button
-                      key={token.id || `all-${index}-${token.ticker}`}
+                      key={`all-${index}-${token.id || token.policyId || token.ticker || 'unknown'}`}
                       onClick={() => handleSelectToken(token)}
                       className={`w-full flex items-center gap-3 p-3 rounded-xl transition-colors ${isDark ? 'hover:bg-gray-800 active:bg-gray-700' : 'hover:bg-gray-100 active:bg-gray-200'}`}
                     >
