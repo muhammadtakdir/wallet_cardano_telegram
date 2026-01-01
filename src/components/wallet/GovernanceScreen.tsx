@@ -12,6 +12,7 @@ import {
   getStakingInfo,
   getStakeAddressFromAddress,
   listDReps,
+  listDRepsFromKoios,
   getDRepDelegators,
 } from "@/lib/cardano";
 import { verifyPin, getStoredWalletForVerification, decryptWallet } from "@/lib/storage/encryption";
@@ -175,11 +176,21 @@ export const GovernanceScreen: React.FC<GovernanceScreenProps> = ({ onBack }) =>
   const loadDRepList = async () => {
     setLoadingDreps(true);
     try {
-      const { dreps } = await listDReps(1, 20, "desc");
+      // Try Koios first (richer metadata with images/bio)
+      let dreps: DRepInfo[] = [];
+      const koiosResult = await listDRepsFromKoios(1, 30);
       
-      // Fetch delegator counts for each DRep
+      if (koiosResult.dreps.length > 0) {
+        dreps = koiosResult.dreps;
+      } else {
+        // Fallback to Blockfrost
+        const blockfrostResult = await listDReps(1, 20, "desc");
+        dreps = blockfrostResult.dreps;
+      }
+      
+      // Fetch delegator counts for each DRep (only first 20 to avoid rate limits)
       const drepsWithDelegators: DRepWithDelegators[] = await Promise.all(
-        dreps.map(async (drep) => {
+        dreps.slice(0, 20).map(async (drep) => {
           const count = await getDRepDelegators(drep.drepId);
           return { ...drep, delegatorsCount: count };
         })
@@ -268,8 +279,9 @@ export const GovernanceScreen: React.FC<GovernanceScreenProps> = ({ onBack }) =>
     }
   };
 
-  // DRep Card Component - uses global theme
+  // DRep Card Component - uses global theme with image support
   const DRepCard: React.FC<{ drep: DRepWithDelegators; onSelect: () => void }> = ({ drep, onSelect }) => {
+    const [imgError, setImgError] = React.useState(false);
     // Display name or truncated ID if no name
     const displayName = drep.name || shortenAddress(drep.drepId, 8);
     const initial = drep.name?.[0]?.toUpperCase() || drep.drepId[4]?.toUpperCase() || "D";
@@ -278,10 +290,19 @@ export const GovernanceScreen: React.FC<GovernanceScreenProps> = ({ onBack }) =>
       <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700 shadow-sm">
         <div className="flex items-start justify-between mb-3">
           <div className="flex items-center gap-3 flex-1 min-w-0">
-            {/* Avatar */}
-            <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-gray-600 text-blue-600 dark:text-white flex items-center justify-center flex-shrink-0 text-lg font-bold">
-              {initial}
-            </div>
+            {/* Avatar - show image if available */}
+            {drep.image && !imgError ? (
+              <img 
+                src={drep.image} 
+                alt={displayName}
+                className="w-10 h-10 rounded-full object-cover flex-shrink-0"
+                onError={() => setImgError(true)}
+              />
+            ) : (
+              <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-gray-600 text-blue-600 dark:text-white flex items-center justify-center flex-shrink-0 text-lg font-bold">
+                {initial}
+              </div>
+            )}
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="font-bold text-gray-900 dark:text-white truncate">{displayName}</span>
@@ -299,6 +320,13 @@ export const GovernanceScreen: React.FC<GovernanceScreenProps> = ({ onBack }) =>
             Delegate
           </Button>
         </div>
+        
+        {/* Bio - show if available */}
+        {drep.bio && (
+          <p className="text-xs text-gray-600 dark:text-gray-400 mb-3 line-clamp-2">
+            {drep.bio}
+          </p>
+        )}
         
         {/* DRep ID */}
         <div className="mb-3">
@@ -526,12 +554,23 @@ export const GovernanceScreen: React.FC<GovernanceScreenProps> = ({ onBack }) =>
             {currentDelegation ? "Change voting delegation to:" : "Delegate voting power to:"}
           </p>
           
-          {/* Selected DRep Info */}
+          {/* Selected DRep Info with Image */}
           <div className="my-4 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
             <div className="flex items-center gap-3 mb-3">
-              <div className="w-12 h-12 rounded-full bg-blue-100 dark:bg-gray-600 text-blue-600 dark:text-white flex items-center justify-center text-xl font-bold">
-                {initial}
-              </div>
+              {selectedDRep?.image ? (
+                <img 
+                  src={selectedDRep.image} 
+                  alt={displayName}
+                  className="w-12 h-12 rounded-full object-cover"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = 'none';
+                  }}
+                />
+              ) : (
+                <div className="w-12 h-12 rounded-full bg-blue-100 dark:bg-gray-600 text-blue-600 dark:text-white flex items-center justify-center text-xl font-bold">
+                  {initial}
+                </div>
+              )}
               <div>
                 <p className="font-bold text-xl text-blue-600 dark:text-blue-400">{displayName}</p>
                 <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
@@ -543,6 +582,14 @@ export const GovernanceScreen: React.FC<GovernanceScreenProps> = ({ onBack }) =>
                 </span>
               </div>
             </div>
+            
+            {/* Bio */}
+            {selectedDRep?.bio && (
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+                {selectedDRep.bio}
+              </p>
+            )}
+            
             <p className="text-xs font-mono text-gray-500 dark:text-gray-400 break-all">
               {selectedDRep?.drepId}
             </p>
@@ -550,6 +597,18 @@ export const GovernanceScreen: React.FC<GovernanceScreenProps> = ({ onBack }) =>
               <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
                 Voting Power: {formatVotingPower(selectedDRep.amount)} ({formatADA(selectedDRep.amount)})
               </p>
+            )}
+            
+            {/* Website Link */}
+            {selectedDRep?.website && (
+              <a 
+                href={selectedDRep.website} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-sm text-blue-500 hover:underline mt-2 block"
+              >
+                🌐 {selectedDRep.website}
+              </a>
             )}
           </div>
           

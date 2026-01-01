@@ -248,8 +248,9 @@ export const AssetItem: React.FC<AssetItemProps> = React.memo(({
   const assetNameHex = asset.assetName || asset.unit.slice(56);
   const fingerprint = asset.fingerprint;
   
-  // Resolve decimals: prefer fetched, then metadata, otherwise default to 6 for fungible tokens
-  const decimals = React.useMemo(() => {
+  // Resolve decimals: prefer fetched, then metadata
+  // Return null if unknown - we will display raw quantity like pool.pm/cardanoscan
+  const decimals = React.useMemo((): number | null => {
     if (isAda) return 6;
 
     const fetched = fetchedDecimals;
@@ -262,8 +263,8 @@ export const AssetItem: React.FC<AssetItemProps> = React.memo(({
       return Number(metaDecimals);
     }
 
-    // Default guess for fungible tokens when decimals are absent
-    return 6;
+    // Return null - display raw quantity from blockchain (like pool.pm)
+    return null;
   }, [isAda, fetchedDecimals, asset.metadata?.decimals]);
   
   const displayName = React.useMemo(() => {
@@ -301,11 +302,24 @@ export const AssetItem: React.FC<AssetItemProps> = React.memo(({
   const logo = fetchedLogo || asset.metadata?.logo || null;
 
   // Calculate quantity with proper decimals
+  // If decimals is null, display raw quantity from blockchain (like pool.pm/cardanoscan)
   const quantity = React.useMemo(() => {
     const raw = asset.quantity;
     if (isAda) {
       const val = parseFloat(lovelaceToAda(raw));
       console.log('[asset-qty] ADA', { unit: asset.unit, raw, decimals: 6, formatted: val });
+      return val;
+    }
+
+    // If decimals unknown, use raw quantity (integer)
+    if (decimals === null) {
+      const val = parseFloat(raw);
+      console.log('[asset-qty] RAW (no decimals)', {
+        unit: asset.unit,
+        decimals: null,
+        raw,
+        formattedNum: val,
+      });
       return val;
     }
 

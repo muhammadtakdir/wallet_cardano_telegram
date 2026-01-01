@@ -9,4 +9,4 @@ export * from "./wallet";
 export * from "./mesh-stake";
 
 // Explicit re-exports for missing exports used in client code
-export { isAdaHandle, getDefaultPool, listDReps, getDRepDelegators } from "./wallet";
+export { isAdaHandle, getDefaultPool, listDReps, listDRepsFromKoios, getDRepDelegators } from "./wallet";

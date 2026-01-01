@@ -1007,6 +1007,9 @@ export interface DRepInfo {
   amount: string; // Live stake
   name?: string; // Derived from metadata if available
   ticker?: string;
+  image?: string; // DRep avatar/image URL (CIP-119)
+  bio?: string; // DRep objectives/bio (CIP-119)
+  website?: string; // DRep website URL
 }
 
 /**
@@ -1030,6 +1033,10 @@ export const getDRepInfo = async (drepId: string): Promise<DRepInfo | null> => {
     
     // Fetch metadata from Blockfrost metadata endpoint (more reliable than direct URL fetch)
     let name = "";
+    let image = "";
+    let bio = "";
+    let website = "";
+    
     try {
       const metadataResponse = await fetch(
         `${baseUrl}/governance/dreps/${drepId}/metadata`,
@@ -1039,13 +1046,16 @@ export const getDRepInfo = async (drepId: string): Promise<DRepInfo | null> => {
         const metadata = await metadataResponse.json();
         // CIP-119 compliant metadata structure
         name = metadata.givenName || metadata.name || "";
+        image = metadata.image?.url || metadata.image || "";
+        bio = metadata.objectives || metadata.bio || metadata.motivations || "";
+        website = metadata.references?.[0]?.uri || "";
       }
     } catch (e) {
       console.warn("Failed to fetch DRep metadata from Blockfrost:", e);
     }
 
     // Fallback: try direct URL if Blockfrost metadata failed
-    if (!name && data.url) {
+    if ((!name || !image) && data.url) {
       try {
         const url = data.url.startsWith("ipfs://") 
           ? `https://ipfs.io/ipfs/${data.url.slice(7)}`
@@ -1053,7 +1063,16 @@ export const getDRepInfo = async (drepId: string): Promise<DRepInfo | null> => {
         const metaResp = await fetch(url, { signal: AbortSignal.timeout(5000) });
         if (metaResp.ok) {
           const meta = await metaResp.json();
-          name = meta.givenName || meta.name || "";
+          const body = meta.body || meta;
+          if (!name) name = body.givenName || body.name || "";
+          if (!image) {
+            const imgUrl = body.image?.url || body.image || "";
+            image = imgUrl.startsWith("ipfs://") 
+              ? `https://ipfs.io/ipfs/${imgUrl.slice(7)}`
+              : imgUrl;
+          }
+          if (!bio) bio = body.objectives || body.bio || body.motivations || "";
+          if (!website) website = body.references?.[0]?.uri || "";
         }
       } catch (e) {
         // Silently fail - URL fetch is just a fallback
@@ -1068,7 +1087,10 @@ export const getDRepInfo = async (drepId: string): Promise<DRepInfo | null> => {
       deposit: data.deposit,
       active: data.active,
       amount: data.amount,
-      name: name || undefined, // Return undefined instead of "Unknown DRep"
+      name: name || undefined,
+      image: image || undefined,
+      bio: bio || undefined,
+      website: website || undefined,
     };
   } catch (error) {
     console.warn("Error getting DRep info:", error);
@@ -1087,6 +1109,98 @@ export const searchDReps = async (query: string): Promise<DRepInfo[]> => {
     return info ? [info] : [];
   }
   return [];
+};
+
+/**
+ * Helper function to resolve IPFS URLs
+ */
+const resolveIpfsUrl = (url: string | undefined): string | undefined => {
+  if (!url) return undefined;
+  if (url.startsWith("ipfs://")) {
+    return `https://ipfs.io/ipfs/${url.slice(7)}`;
+  }
+  return url;
+};
+
+/**
+ * Get list of DReps from Koios API with rich metadata
+ * Koios often has pre-parsed metadata, making it faster and more complete
+ */
+export const listDRepsFromKoios = async (
+  page: number = 1,
+  count: number = 20
+): Promise<{ dreps: DRepInfo[]; hasMore: boolean }> => {
+  try {
+    const network = getCurrentNetwork();
+    const koiosBase = network === "mainnet" 
+      ? "https://api.koios.rest/api/v1"
+      : "https://preprod.koios.rest/api/v1";
+
+    // Koios POST endpoint for DReps with filters
+    const offset = (page - 1) * count;
+    const response = await fetch(`${koiosBase}/drep_list?offset=${offset}&limit=${count}`, {
+      method: "GET",
+      headers: {
+        "Accept": "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      console.warn("Koios API error:", response.status);
+      return { dreps: [], hasMore: false };
+    }
+
+    const data = await response.json();
+    
+    // Map Koios response to DRepInfo format
+    const dreps: DRepInfo[] = (data || []).map((item: {
+      drep_id?: string;
+      hex?: string;
+      url?: string;
+      hash?: string;
+      deposit?: string;
+      active?: boolean;
+      amount?: string;
+      meta_json?: {
+        body?: {
+          givenName?: string;
+          name?: string;
+          image?: { url?: string } | string;
+          objectives?: string;
+          bio?: string;
+          motivations?: string;
+          references?: Array<{ uri?: string }>;
+        };
+      };
+    }) => {
+      const body = item.meta_json?.body;
+      const imageUrl = typeof body?.image === "string" 
+        ? body.image 
+        : body?.image?.url;
+      
+      return {
+        drepId: item.drep_id || "",
+        view: item.hex || "",
+        url: item.url,
+        metadataHash: item.hash,
+        deposit: item.deposit || "0",
+        active: item.active ?? true,
+        amount: item.amount || "0",
+        name: body?.givenName || body?.name || undefined,
+        image: resolveIpfsUrl(imageUrl),
+        bio: body?.objectives || body?.bio || body?.motivations || undefined,
+        website: body?.references?.[0]?.uri || undefined,
+      };
+    });
+
+    return {
+      dreps,
+      hasMore: data.length === count,
+    };
+  } catch (error) {
+    console.warn("Error listing DReps from Koios:", error);
+    return { dreps: [], hasMore: false };
+  }
 };
 
 /**

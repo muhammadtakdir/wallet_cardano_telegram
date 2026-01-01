@@ -113,41 +113,61 @@ export const SendScreen: React.FC<SendScreenProps> = ({ onBack, onSuccess }) => 
         
         const tokenPromises = balance.assets.map(async (asset: WalletAsset) => {
           const isNFT = asset.quantity === "1" && !asset.metadata?.decimals;
-          const displayName = asset.metadata?.name || 
-                            asset.assetName || 
-                            (asset.unit ? asset.unit.slice(56) : "Unknown Token");
           
-          // Fetch decimals from API for non-NFT tokens
+          // Fetch token info from API (includes decimals, name, ticker, logo)
           let decimals: number | null = asset.metadata?.decimals ?? null;
-          if (!isNFT && (decimals === null || Number.isNaN(Number(decimals)))) {
+          let fetchedName: string | null = null;
+          let fetchedTicker: string | null = null;
+          let fetchedLogo: string | null = null;
+          
+          if (!isNFT) {
             try {
               const res = await fetch(`/api/dexhunter/token-info?unit=${asset.unit}`);
               const data = await res.json();
+              console.log(`[SendScreen] token-info for ${asset.unit}:`, data);
+              
               if (data.decimals !== undefined && data.decimals !== null) {
                 decimals = Number(data.decimals);
               }
-            } catch {
-              // Keep default decimals guess below
+              if (data.name) {
+                fetchedName = data.name;
+              }
+              if (data.ticker) {
+                fetchedTicker = data.ticker;
+              }
+              if (data.logo) {
+                fetchedLogo = data.logo;
+              }
+            } catch (e) {
+              console.log(`[SendScreen] Failed to fetch token info for ${asset.unit}:`, e);
             }
           }
 
-          // Default guess for fungible tokens when decimals are absent
-          if (!isNFT && (decimals === null || Number.isNaN(Number(decimals)))) {
-            decimals = 6;
-          }
-
+          // For NFTs, decimals is always 0
           if (isNFT) {
             decimals = 0;
           }
           
+          // If decimals still unknown, keep as 0 to show raw quantity (like pool.pm)
+          if (decimals === null || Number.isNaN(Number(decimals))) {
+            decimals = 0;
+          }
+          
+          // Determine display name: fetched > metadata > decoded hex > raw hex
+          const assetNameHex = asset.assetName || (asset.unit ? asset.unit.slice(56) : "");
+          const displayName = fetchedName || 
+                              asset.metadata?.name || 
+                              decodeAssetName(assetNameHex) ||
+                              "Unknown Token";
+          
           return {
             unit: asset.unit,
-            name: decodeAssetName(displayName),
-            ticker: asset.metadata?.ticker,
+            name: displayName,
+            ticker: fetchedTicker || asset.metadata?.ticker,
             type: isNFT ? "nft" : "token",
             quantity: asset.quantity,
-            decimals: decimals ?? 6,
-            image: asset.metadata?.logo,
+            decimals: decimals,
+            image: fetchedLogo || asset.metadata?.logo,
             policyId: asset.policyId || (asset.unit ? asset.unit.slice(0, 56) : undefined),
             assetName: asset.assetName || (asset.unit ? asset.unit.slice(56) : undefined),
           } as AvailableAsset;
@@ -667,7 +687,10 @@ export const SendScreen: React.FC<SendScreenProps> = ({ onBack, onSuccess }) => 
                   <div className="flex-1">
                     <p className="font-medium text-gray-900 dark:text-white">{asset.name}</p>
                     <p className="text-sm text-gray-500">
-                      {formatQuantity(asset.quantity, asset.decimals, asset.ticker)}
+                      {asset.type === "ada"
+                        ? formatQuantity(asset.quantity, asset.decimals, asset.ticker)
+                        : `${formatDisplayNumber(parseFloat(formatRawQuantity(asset.quantity, asset.decimals)), asset.decimals)} ${asset.ticker || ""}`
+                      }
                     </p>
                   </div>
                   <span className={`text-xs px-2 py-1 rounded-full ${

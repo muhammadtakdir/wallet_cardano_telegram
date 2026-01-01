@@ -191,9 +191,32 @@ async function apiRequest<T>(
     const data = await response.json();
 
     if (!response.ok) {
-      console.error('[DexHunter API] Error response:', data);
+      console.error('[DexHunter API] Error response:', data, 'Status:', response.status);
+      
+      // Map error codes to user-friendly messages
+      let userMessage = 'Unable to process swap request';
+      
+      if (response.status === 400) {
+        // Bad request - usually means token not supported or invalid pair
+        if (data.message?.includes('not supported') || data.error?.includes('not supported')) {
+          userMessage = 'This token is not supported for swapping';
+        } else if (data.message?.includes('liquidity') || data.error?.includes('liquidity')) {
+          userMessage = 'Insufficient liquidity for this swap pair';
+        } else if (data.message?.includes('pair') || data.error?.includes('pair')) {
+          userMessage = 'This swap pair is not available';
+        } else {
+          userMessage = 'This token pair is not available for swapping. Try a different pair or token.';
+        }
+      } else if (response.status === 404) {
+        userMessage = 'Token not found. Please check the token ID.';
+      } else if (response.status === 429) {
+        userMessage = 'Too many requests. Please wait a moment and try again.';
+      } else if (response.status >= 500) {
+        userMessage = 'DexHunter service is temporarily unavailable. Please try again later.';
+      }
+      
       throw new DexHunterError(
-        data.message || data.error || `API error: ${response.status}`,
+        userMessage,
         response.status,
         data
       );
