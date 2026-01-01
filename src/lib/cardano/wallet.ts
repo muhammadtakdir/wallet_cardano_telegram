@@ -1116,7 +1116,7 @@ export const searchDReps = async (query: string): Promise<DRepInfo[]> => {
       return info && info.active ? [info] : [];
     }
 
-    // Search by name using internal API route to avoid CORS
+    // Search by ID using internal API route to avoid CORS
     const network = getCurrentNetwork();
 
     // Fetch DReps list (registered only) via internal API
@@ -1128,60 +1128,38 @@ export const searchDReps = async (query: string): Promise<DRepInfo[]> => {
     if (!response.ok) return [];
 
     const data = await response.json();
-    const searchLower = query.toLowerCase().trim();
+    
+    // Handle error response
+    if (data?.error) {
+      console.warn("Search DReps error:", data.error);
+      return [];
+    }
 
-    // Filter and map results - only registered DReps matching search
+    // Filter and map results - only registered DReps matching search by ID
     const results: DRepInfo[] = (data || [])
-      .filter((item: { 
-        registered?: boolean;
-        drep_id?: string;
-        meta_json?: { body?: { givenName?: string; name?: string } };
-      }) => {
-        if (!item.registered) return false;
-        const name = item.meta_json?.body?.givenName || item.meta_json?.body?.name || "";
-        const drepId = item.drep_id || "";
-        return name.toLowerCase().includes(searchLower) || drepId.includes(query);
-      })
+      .filter((item: { registered?: boolean }) => item.registered === true)
       .slice(0, 20)
       .map((item: {
         drep_id?: string;
         hex?: string;
-        url?: string;
-        hash?: string;
+        meta_url?: string | null;
+        meta_hash?: string | null;
         deposit?: string;
         registered?: boolean;
         amount?: string;
-        meta_json?: {
-          body?: {
-            givenName?: string;
-            name?: string;
-            image?: { url?: string } | string;
-            objectives?: string;
-            bio?: string;
-            motivations?: string;
-            references?: Array<{ uri?: string }>;
-          };
-        };
-      }) => {
-        const body = item.meta_json?.body;
-        const imageUrl = typeof body?.image === "string" 
-          ? body.image 
-          : body?.image?.url;
-        
-        return {
-          drepId: item.drep_id || "",
-          view: item.hex || "",
-          url: item.url,
-          metadataHash: item.hash,
-          deposit: item.deposit || "0",
-          active: item.registered ?? true,
-          amount: item.amount || "0",
-          name: body?.givenName || body?.name || undefined,
-          image: resolveIpfsUrl(imageUrl),
-          bio: body?.objectives || body?.bio || body?.motivations || undefined,
-          website: body?.references?.[0]?.uri || undefined,
-        };
-      });
+      }) => ({
+        drepId: item.drep_id || "",
+        view: item.hex || "",
+        url: item.meta_url || undefined,
+        metadataHash: item.meta_hash || undefined,
+        deposit: item.deposit || "0",
+        active: item.registered ?? true,
+        amount: item.amount || "0",
+        name: undefined,
+        image: undefined,
+        bio: undefined,
+        website: undefined,
+      }));
 
     return results;
   } catch (error) {
@@ -1227,49 +1205,42 @@ export const listDRepsFromKoios = async (
 
     const data = await response.json();
     
-    // Map Koios response to DRepInfo format - only include registered DReps
+    // Handle error response
+    if (data?.error) {
+      console.warn("Koios API returned error:", data.error);
+      return { dreps: [], hasMore: false };
+    }
+    
+    // Map Koios drep_info response to DRepInfo format - only include registered DReps
     const dreps: DRepInfo[] = (data || [])
       .filter((item: { registered?: boolean }) => item.registered === true)
       .map((item: {
-      drep_id?: string;
-      hex?: string;
-      url?: string;
-      hash?: string;
-      deposit?: string;
-      active?: boolean;
-      registered?: boolean;
-      amount?: string;
-      meta_json?: {
-        body?: {
-          givenName?: string;
-          name?: string;
-          image?: { url?: string } | string;
-          objectives?: string;
-          bio?: string;
-          motivations?: string;
-          references?: Array<{ uri?: string }>;
+        drep_id?: string;
+        hex?: string;
+        meta_url?: string | null;
+        meta_hash?: string | null;
+        deposit?: string;
+        active?: boolean;
+        registered?: boolean;
+        amount?: string;
+        expires_epoch_no?: number;
+      }) => {
+        // For DReps without metadata, show as Anonymous
+        return {
+          drepId: item.drep_id || "",
+          view: item.hex || "",
+          url: item.meta_url || undefined,
+          metadataHash: item.meta_hash || undefined,
+          deposit: item.deposit || "0",
+          active: item.registered ?? true,
+          amount: item.amount || "0",
+          // Name will be undefined for anonymous DReps
+          name: undefined,
+          image: undefined,
+          bio: undefined,
+          website: undefined,
         };
-      };
-    }) => {
-      const body = item.meta_json?.body;
-      const imageUrl = typeof body?.image === "string" 
-        ? body.image 
-        : body?.image?.url;
-      
-      return {
-        drepId: item.drep_id || "",
-        view: item.hex || "",
-        url: item.url,
-        metadataHash: item.hash,
-        deposit: item.deposit || "0",
-        active: item.registered ?? true,
-        amount: item.amount || "0",
-        name: body?.givenName || body?.name || undefined,
-        image: resolveIpfsUrl(imageUrl),
-        bio: body?.objectives || body?.bio || body?.motivations || undefined,
-        website: body?.references?.[0]?.uri || undefined,
-      };
-    });
+      });
 
     return {
       dreps,
