@@ -21,7 +21,7 @@ export interface SwapScreenProps {
 
 type SwapStatus = 'idle' | 'estimating' | 'building' | 'signing' | 'submitting' | 'success' | 'error';
 
-// Token Icon Component with fallback
+// Token Icon Component with fallback and IPFS support
 const TokenIcon: React.FC<{ token: Token; size?: 'sm' | 'md' | 'lg' }> = ({ token, size = 'md' }) => {
   const [imgError, setImgError] = React.useState(false);
   const sizeClasses = {
@@ -31,13 +31,30 @@ const TokenIcon: React.FC<{ token: Token; size?: 'sm' | 'md' | 'lg' }> = ({ toke
   };
   const bgColor = token.id === '' ? 'bg-blue-500' : 'bg-purple-500';
 
-  if (token.logo && !imgError) {
+  // Convert IPFS URL to HTTP gateway
+  const getImageUrl = (url?: string): string | undefined => {
+    if (!url) return undefined;
+    if (url.startsWith('ipfs://')) {
+      const hash = url.replace('ipfs://', '');
+      return `https://ipfs.io/ipfs/${hash}`;
+    }
+    if (url.startsWith('ipfs:')) {
+      const hash = url.replace('ipfs:', '');
+      return `https://ipfs.io/ipfs/${hash}`;
+    }
+    return url;
+  };
+
+  const imageUrl = getImageUrl(token.logo);
+
+  if (imageUrl && !imgError) {
     return (
       <img
-        src={token.logo}
+        src={imageUrl}
         alt={token.ticker}
         className={`${sizeClasses[size]} rounded-full object-cover flex-shrink-0`}
         onError={() => setImgError(true)}
+        loading="lazy"
       />
     );
   }
@@ -151,7 +168,7 @@ export const SwapScreen: React.FC<SwapScreenProps> = ({ onBack }) => {
     buildWalletTokens();
   }, [showTokenSelect, balance?.assets]);
 
-  // Search for tokens via DexHunter
+  // Search for tokens - supports ticker, name, policy ID, and token ID
   React.useEffect(() => {
     if (!tokenSearch || tokenSearch.length < 2) {
       setSearchResults([]);
@@ -160,14 +177,35 @@ export const SwapScreen: React.FC<SwapScreenProps> = ({ onBack }) => {
     
     const searchTimeout = setTimeout(async () => {
       setIsSearching(true);
+      const searchLower = tokenSearch.toLowerCase();
+      const searchTerm = tokenSearch.trim();
+      
+      // First, search from cached allDexTokens (instant results)
+      if (allDexTokens.length > 0) {
+        const localResults = allDexTokens.filter(t => {
+          const tickerMatch = t.ticker.toLowerCase().includes(searchLower);
+          const nameMatch = t.name.toLowerCase().includes(searchLower);
+          const policyMatch = t.policyId?.toLowerCase().includes(searchLower) || false;
+          const idMatch = t.id.toLowerCase().includes(searchLower);
+          return tickerMatch || nameMatch || policyMatch || idMatch;
+        }).slice(0, 50);
+        
+        if (localResults.length > 0) {
+          setSearchResults(localResults);
+          setIsSearching(false);
+          return;
+        }
+      }
+      
+      // If no local results or searching by long ID (policy ID), try API
       try {
-        // Search DexHunter API for tokens
-        const res = await fetch(`https://api.dexhunter.io/v2/swap/tokens?query=${encodeURIComponent(tokenSearch)}`);
+        // Search via internal API route (which adds X-Partner-Id header)
+        const res = await fetch(`/api/dexhunter/tokens?query=${encodeURIComponent(searchTerm)}`);
         if (res.ok) {
           const data = await res.json();
           
           // Map DexHunter response to Token format
-          const tokens: Token[] = (data || []).slice(0, 15).map((t: { policy_id?: string; token_ascii_name?: string; ticker?: string; token_name?: string; decimals?: number; logo?: string }) => ({
+          const tokens: Token[] = (data || []).slice(0, 30).map((t: { policy_id?: string; token_ascii_name?: string; ticker?: string; token_name?: string; decimals?: number; logo?: string }) => ({
             id: t.policy_id === '' ? '' : `${t.policy_id}${t.token_ascii_name || ''}`,
             ticker: t.ticker || t.token_name || 'UNKNOWN',
             name: t.token_name || t.ticker || 'Unknown',
@@ -180,12 +218,20 @@ export const SwapScreen: React.FC<SwapScreenProps> = ({ onBack }) => {
         }
       } catch (e) {
         console.error('Token search error:', e);
+        // Fallback: show local results even if API fails
+        if (allDexTokens.length > 0) {
+          const localResults = allDexTokens.filter(t => 
+            t.ticker.toLowerCase().includes(searchLower) || 
+            t.name.toLowerCase().includes(searchLower)
+          ).slice(0, 30);
+          setSearchResults(localResults);
+        }
       }
       setIsSearching(false);
-    }, 400); // Debounce 400ms
+    }, 300); // Debounce 300ms
     
     return () => clearTimeout(searchTimeout);
-  }, [tokenSearch]);
+  }, [tokenSearch, allDexTokens]);
 
   // Reset search when modal closes
   React.useEffect(() => {
@@ -195,16 +241,32 @@ export const SwapScreen: React.FC<SwapScreenProps> = ({ onBack }) => {
     }
   }, [showTokenSelect]);
 
-  // Fetch all DexHunter tokens
+  // Fetch all DexHunter tokens with caching
   React.useEffect(() => {
     if (!showTokenSelect) return;
     
     const fetchAllTokens = async () => {
-      if (allDexTokens.length > 0) return; // Already loaded
+      if (allDexTokens.length > 0) return; // Already loaded in memory
+      
+      // Check localStorage cache first (valid for 1 hour)
+      const cached = localStorage.getItem('dexhunter_tokens_cache');
+      const cacheTime = localStorage.getItem('dexhunter_tokens_time');
+      const ONE_HOUR = 60 * 60 * 1000;
+      
+      if (cached && cacheTime && (Date.now() - parseInt(cacheTime)) < ONE_HOUR) {
+        try {
+          const tokens = JSON.parse(cached);
+          setAllDexTokens(tokens);
+          return;
+        } catch (e) {
+          // Invalid cache, will fetch fresh
+        }
+      }
       
       setLoadingAllTokens(true);
       try {
-        const res = await fetch('https://api.dexhunter.io/v2/swap/tokens');
+        // Use internal API route (which adds X-Partner-Id header)
+        const res = await fetch('/api/dexhunter/tokens');
         if (res.ok) {
           const data = await res.json();
           const tokens: Token[] = (data || []).map((t: { policy_id?: string; token_ascii_name?: string; ticker?: string; token_name?: string; decimals?: number; logo?: string }) => ({
@@ -216,6 +278,10 @@ export const SwapScreen: React.FC<SwapScreenProps> = ({ onBack }) => {
             policyId: t.policy_id,
           }));
           setAllDexTokens(tokens);
+          
+          // Cache to localStorage
+          localStorage.setItem('dexhunter_tokens_cache', JSON.stringify(tokens));
+          localStorage.setItem('dexhunter_tokens_time', Date.now().toString());
         }
       } catch (e) {
         console.error('Failed to fetch all tokens:', e);
@@ -682,7 +748,7 @@ The rest comes back to you!`;
                 </svg>
                 <input
                   type="text"
-                  placeholder="Search by ticker or token ID..."
+                  placeholder="Search by name, ticker, or policy ID..."
                   value={tokenSearch}
                   onChange={(e) => setTokenSearch(e.target.value)}
                   className={`w-full pl-10 pr-4 py-2.5 rounded-xl text-sm ${isDark ? 'bg-gray-800 text-white placeholder-gray-500' : 'bg-gray-100 text-gray-900 placeholder-gray-400'} focus:outline-none focus:ring-2 focus:ring-blue-500`}
@@ -698,7 +764,7 @@ The rest comes back to you!`;
               {/* Search Results */}
               {tokenSearch.length >= 2 && searchResults.length > 0 && (
                 <>
-                  <div className="px-2 py-1.5 text-xs font-semibold text-gray-500 uppercase">Search Results</div>
+                  <div className="px-2 py-1.5 text-xs font-semibold text-gray-500 uppercase">Search Results ({searchResults.length})</div>
                   {searchResults.map((token) => (
                     <button
                       key={token.id || 'ada'}
@@ -709,6 +775,11 @@ The rest comes back to you!`;
                       <div className="flex-1 min-w-0 text-left">
                         <div className="font-semibold">{token.ticker}</div>
                         <div className="text-xs text-gray-500 truncate">{token.name}</div>
+                        {token.policyId && (
+                          <div className="text-[10px] text-gray-400 truncate font-mono">
+                            {token.policyId.slice(0, 8)}...{token.policyId.slice(-8)}
+                          </div>
+                        )}
                       </div>
                       <div className="text-sm text-gray-500 text-right">{getTokenBalance(token)}</div>
                     </button>
@@ -781,7 +852,7 @@ The rest comes back to you!`;
                   </div>
                   {allDexTokens
                     .filter(at => !walletTokens.find(wt => wt.id === at.id) && !POPULAR_TOKENS.find(pt => pt.id === at.id))
-                    .slice(0, 50) // Limit to 50 tokens for performance
+                    .slice(0, 100) // Show up to 100 tokens
                     .map((token) => (
                     <button
                       key={token.id || `all-${token.ticker}`}
@@ -796,9 +867,9 @@ The rest comes back to you!`;
                       <div className="text-sm text-gray-500 text-right">{getTokenBalance(token)}</div>
                     </button>
                   ))}
-                  {allDexTokens.length > 50 && (
+                  {allDexTokens.length > 100 && (
                     <p className="text-xs text-center text-gray-500 py-2">
-                      Use search to find more tokens ({allDexTokens.length - 50}+ more available)
+                      Search by ticker or policy ID to find more ({allDexTokens.length - 100}+ tokens available)
                     </p>
                   )}
                 </>
