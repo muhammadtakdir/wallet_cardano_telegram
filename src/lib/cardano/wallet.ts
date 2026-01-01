@@ -714,8 +714,9 @@ export const sendTransaction = async (
       return { success: false, error: "Minimum send amount is 1 ADA" };
     }
 
-    // Create provider for transaction builder
-    const provider = createBlockfrostProvider();
+    // Create provider for transaction builder with current network
+    const network = getCurrentNetwork();
+    const provider = createBlockfrostProvider(network);
 
     // Get UTxOs and change address from wallet
     const utxos = await wallet.getUtxos();
@@ -780,8 +781,9 @@ export const sendAssetTransaction = async (
   quantity: string
 ): Promise<SendTransactionResult> => {
   try {
-    // Create provider for transaction builder
-    const provider = createBlockfrostProvider();
+    // Create provider for transaction builder with current network
+    const network = getCurrentNetwork();
+    const provider = createBlockfrostProvider(network);
 
     // Get UTxOs and change address from wallet
     const utxos = await wallet.getUtxos();
@@ -842,20 +844,23 @@ export interface MultiAssetOutput {
  * @param wallet - MeshWallet instance
  * @param recipientAddress - Recipient's Cardano address
  * @param outputs - Array of assets to send
+ * @param network - Optional network override (defaults to getCurrentNetwork())
  * @returns Transaction result with hash or error
  */
 export const sendMultiAssetTransaction = async (
   wallet: MeshWallet,
   recipientAddress: string,
-  outputs: MultiAssetOutput[]
+  outputs: MultiAssetOutput[],
+  network?: CardanoNetwork
 ): Promise<SendTransactionResult> => {
   try {
     if (!outputs || outputs.length === 0) {
       return { success: false, error: "No assets specified to send" };
     }
 
-    // Create provider for transaction builder
-    const provider = createBlockfrostProvider();
+    // Create provider for transaction builder with proper network
+    const resolvedNetwork = network || getCurrentNetwork();
+    const provider = createBlockfrostProvider(resolvedNetwork);
 
     // Get UTxOs and change address from wallet
     const utxos = await wallet.getUtxos();
@@ -952,8 +957,9 @@ export const estimateTransactionFee = async (
   lovelaceAmount: string
 ): Promise<string> => {
   try {
-    // Create provider for transaction builder
-    const provider = createBlockfrostProvider();
+    // Create provider for transaction builder with current network
+    const network = getCurrentNetwork();
+    const provider = createBlockfrostProvider(network);
 
     // Get UTxOs and change address from wallet
     const utxos = await wallet.getUtxos();
@@ -1829,7 +1835,8 @@ export const withdrawRewards = async (
   wallet: MeshWallet
 ): Promise<{ success: boolean; txHash?: string; error?: string; stack?: string }> => {
   try {
-    const provider = createBlockfrostProvider();
+    const network = getCurrentNetwork();
+    const provider = createBlockfrostProvider(network);
     const utxos = await wallet.getUtxos();
     const changeAddress = await wallet.getChangeAddress();
     const rewardAddresses = await wallet.getRewardAddresses();

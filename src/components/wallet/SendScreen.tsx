@@ -405,9 +405,9 @@ export const SendScreen: React.FC<SendScreenProps> = ({ onBack, onSuccess }) => 
         throw new Error("No assets to send");
       }
 
-      // Use multi-asset transaction
+      // Use multi-asset transaction with current network
       const { sendMultiAssetTransaction } = await import("@/lib/cardano");
-      const result = await sendMultiAssetTransaction(walletInstance, finalRecipient, outputs);
+      const result = await sendMultiAssetTransaction(walletInstance, finalRecipient, outputs, network);
 
       if (result.success && result.txHash) {
         setTxHash(result.txHash);
