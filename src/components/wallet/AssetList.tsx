@@ -368,6 +368,13 @@ export const AssetItem: React.FC<AssetItemProps> = React.memo(({
         ]);
         
         if (!cancelled) {
+          console.log('[asset-info]', {
+            unit: asset.unit,
+            fetchedDecimals: infoData.decimals,
+            name: infoData.name,
+            ticker: infoData.ticker,
+            logo: Boolean(infoData.logo),
+          });
           // Set token metadata
           if (infoData.decimals !== undefined) {
             setFetchedDecimals(infoData.decimals);
