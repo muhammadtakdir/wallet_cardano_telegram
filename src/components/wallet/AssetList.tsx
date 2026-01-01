@@ -302,11 +302,24 @@ export const AssetItem: React.FC<AssetItemProps> = React.memo(({
 
   // Calculate quantity with proper decimals
   const quantity = React.useMemo(() => {
+    const raw = asset.quantity;
     if (isAda) {
-      return parseFloat(lovelaceToAda(asset.quantity));
+      const val = parseFloat(lovelaceToAda(raw));
+      console.log('[asset-qty] ADA', { unit: asset.unit, raw, decimals: 6, formatted: val });
+      return val;
     }
-    return parseFloat(formatQuantity(asset.quantity, decimals));
-  }, [asset.quantity, decimals, isAda]);
+
+    const formattedStr = formatQuantity(raw, decimals);
+    const val = parseFloat(formattedStr);
+    console.log('[asset-qty]', {
+      unit: asset.unit,
+      decimals,
+      raw,
+      formattedStr,
+      formattedNum: val,
+    });
+    return val;
+  }, [asset.quantity, decimals, isAda, asset.unit]);
 
   // Lazy load token info and prices using Intersection Observer
   const itemRef = React.useRef<HTMLDivElement>(null);
