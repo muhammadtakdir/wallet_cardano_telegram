@@ -416,6 +416,7 @@ export const BalanceCard: React.FC<BalanceCardProps> = ({
                   adaPrice={adaPrice}
                   currency={currency}
                   onClick={() => onAssetClick?.(asset)}
+                  isBalanceHidden={isBalanceHidden}
                 />
               ))}
               {/* Show NFTs if there's space */}
@@ -428,6 +429,7 @@ export const BalanceCard: React.FC<BalanceCardProps> = ({
                   adaPrice={adaPrice}
                   currency={currency}
                   onClick={() => onAssetClick?.(asset)}
+                  isBalanceHidden={isBalanceHidden}
                 />
               ))}
               {(allAssetsWithAda.length + nfts.length) > 5 && (

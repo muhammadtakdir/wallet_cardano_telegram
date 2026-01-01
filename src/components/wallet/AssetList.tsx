@@ -9,12 +9,14 @@ import {
   getSavedCurrency,
   fetchAdaPrice,
   formatFiatValue,
+  getBalanceHidden,
 } from "@/lib/currency";
 
 export interface AssetListProps {
   onAssetClick?: (asset: WalletAsset) => void;
   onBack?: () => void;
   showTotalPortfolio?: boolean;
+  isBalanceHidden?: boolean;
 }
 
 type AssetTab = "all" | "tokens" | "nfts";
@@ -36,16 +38,32 @@ function createAdaAsset(lovelace: string): WalletAsset {
   };
 }
 
-export const AssetList: React.FC<AssetListProps> = ({ onAssetClick, onBack, showTotalPortfolio = true }) => {
+export const AssetList: React.FC<AssetListProps> = ({ onAssetClick, onBack, showTotalPortfolio = true, isBalanceHidden: propIsBalanceHidden }) => {
   const { balance } = useWalletStore();
   const [activeTab, setActiveTab] = React.useState<AssetTab>("all");
   const [adaPrice, setAdaPrice] = React.useState<number>(0);
   const [currency, setCurrency] = React.useState<FiatCurrency>("usd");
   const [totalPortfolioAda, setTotalPortfolioAda] = React.useState<number>(0);
   const [isCalculating, setIsCalculating] = React.useState(false);
+  const [isBalanceHidden, setIsBalanceHidden] = React.useState(propIsBalanceHidden ?? false);
 
   const assets = balance?.assets || [];
   const adaAmount = parseFloat(balance?.ada || "0");
+
+  // Load currency preference and balance hidden state
+  React.useEffect(() => {
+    setCurrency(getSavedCurrency());
+    if (propIsBalanceHidden === undefined) {
+      setIsBalanceHidden(getBalanceHidden());
+    }
+  }, [propIsBalanceHidden]);
+
+  // Update from prop
+  React.useEffect(() => {
+    if (propIsBalanceHidden !== undefined) {
+      setIsBalanceHidden(propIsBalanceHidden);
+    }
+  }, [propIsBalanceHidden]);
 
   // Load currency preference
   React.useEffect(() => {
@@ -202,6 +220,7 @@ export const AssetList: React.FC<AssetListProps> = ({ onAssetClick, onBack, show
               adaPrice={adaPrice}
               currency={currency}
               onClick={() => onAssetClick?.(asset)}
+              isBalanceHidden={isBalanceHidden}
             />
           ))}
           {/* Load More Button */}
@@ -226,6 +245,7 @@ interface AssetItemProps {
   adaPrice?: number;
   currency?: FiatCurrency;
   onClick?: () => void;
+  isBalanceHidden?: boolean;
 }
 
 // Memoized AssetItem to prevent re-renders
@@ -235,7 +255,8 @@ export const AssetItem: React.FC<AssetItemProps> = React.memo(({
   isAda = false,
   adaPrice = 0,
   currency = "usd",
-  onClick 
+  onClick,
+  isBalanceHidden = false
 }) => {
   const [tokenPriceAda, setTokenPriceAda] = React.useState<number | null>(null);
   const [shouldLoadData, setShouldLoadData] = React.useState(false);
@@ -518,14 +539,14 @@ export const AssetItem: React.FC<AssetItemProps> = React.memo(({
           {!isNFT && (
             <>
               <p className="font-bold text-gray-900 dark:text-white">
-                {formatDisplayQuantity(quantity, isAda ? 2 : 6)}
+                {isBalanceHidden ? '••••••' : formatDisplayQuantity(quantity, isAda ? 2 : 6)}
               </p>
-              {valueInAda !== null && !isAda && (
+              {valueInAda !== null && !isAda && !isBalanceHidden && (
                 <p className="text-xs text-gray-500 dark:text-gray-400">
                   ≈ {formatDisplayQuantity(valueInAda, 2)} ADA
                 </p>
               )}
-              {valueInFiat !== null && (
+              {valueInFiat !== null && !isBalanceHidden && (
                 <p className="text-xs text-green-600 dark:text-green-400 font-medium">
                   {formatFiatValue(valueInFiat, currency)}
                 </p>

@@ -74,6 +74,8 @@ export const SwapScreen: React.FC<SwapScreenProps> = ({ onBack }) => {
   const [isSearching, setIsSearching] = React.useState(false);
   const [walletTokens, setWalletTokens] = React.useState<Token[]>([]);
   const [loadingWalletTokens, setLoadingWalletTokens] = React.useState(false);
+  const [allDexTokens, setAllDexTokens] = React.useState<Token[]>([]);
+  const [loadingAllTokens, setLoadingAllTokens] = React.useState(false);
 
   const isDark = colorScheme === 'dark';
   const isMainnet = network === 'mainnet';
@@ -192,6 +194,38 @@ export const SwapScreen: React.FC<SwapScreenProps> = ({ onBack }) => {
       setSearchResults([]);
     }
   }, [showTokenSelect]);
+
+  // Fetch all DexHunter tokens
+  React.useEffect(() => {
+    if (!showTokenSelect) return;
+    
+    const fetchAllTokens = async () => {
+      if (allDexTokens.length > 0) return; // Already loaded
+      
+      setLoadingAllTokens(true);
+      try {
+        const res = await fetch('https://api.dexhunter.io/v2/swap/tokens');
+        if (res.ok) {
+          const data = await res.json();
+          const tokens: Token[] = (data || []).map((t: { policy_id?: string; token_ascii_name?: string; ticker?: string; token_name?: string; decimals?: number; logo?: string }) => ({
+            id: t.policy_id === '' ? '' : `${t.policy_id}${t.token_ascii_name || ''}`,
+            ticker: t.ticker || t.token_name || 'UNKNOWN',
+            name: t.token_name || t.ticker || 'Unknown',
+            decimals: t.decimals || 0,
+            logo: t.logo,
+            policyId: t.policy_id,
+          }));
+          setAllDexTokens(tokens);
+        }
+      } catch (e) {
+        console.error('Failed to fetch all tokens:', e);
+      }
+      setLoadingAllTokens(false);
+    };
+    
+    fetchAllTokens();
+  }, [showTokenSelect, allDexTokens.length]);
+
   // Fetch estimate with debounce
   React.useEffect(() => {
     const amount = parseFloat(amountIn);
@@ -563,6 +597,34 @@ The rest comes back to you!`;
             </div>
           )}
 
+          {/* Small Amount Warning */}
+          {estimate && tokenIn.id === '' && (() => {
+            const amountValue = parseFloat(amountIn) || 0;
+            const estimatedFee = (estimate.total_fee || 1_000_000) / 1_000_000; // in ADA
+            const deposit = (estimate.deposits || 2_000_000) / 1_000_000; // in ADA
+            const totalCost = estimatedFee + deposit;
+            const isSmallAmount = totalCost > (amountValue * 0.5);
+            
+            if (isSmallAmount && amountValue > 0) {
+              return (
+                <div className="p-2.5 rounded-xl bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800">
+                  <div className="flex items-start gap-2">
+                    <span className="text-lg">⚠️</span>
+                    <div>
+                      <p className="text-sm font-medium text-yellow-800 dark:text-yellow-200 mb-1">Small Amount Warning</p>
+                      <p className="text-xs text-yellow-700 dark:text-yellow-300">
+                        You are swapping a small amount ({amountValue.toFixed(2)} ADA). 
+                        The operational fee (~{totalCost.toFixed(1)} ADA) is more than 50% of your swap value. 
+                        Consider swapping a larger amount for better efficiency.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+            return null;
+          })()}
+
           {/* Error */}
           {(estimateError || error) && (
             <div className="p-2.5 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
@@ -706,6 +768,48 @@ The rest comes back to you!`;
                     </button>
                   ))}
                 </>
+              )}
+              
+              {/* All Available Tokens - Show when not searching */}
+              {tokenSearch.length < 2 && allDexTokens.length > 0 && (
+                <>
+                  <div className="px-2 py-1.5 text-xs font-semibold text-gray-500 uppercase mt-2 flex items-center gap-2">
+                    All Available Tokens ({allDexTokens.length})
+                    {loadingAllTokens && (
+                      <div className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                    )}
+                  </div>
+                  {allDexTokens
+                    .filter(at => !walletTokens.find(wt => wt.id === at.id) && !POPULAR_TOKENS.find(pt => pt.id === at.id))
+                    .slice(0, 50) // Limit to 50 tokens for performance
+                    .map((token) => (
+                    <button
+                      key={token.id || `all-${token.ticker}`}
+                      onClick={() => handleSelectToken(token)}
+                      className={`w-full flex items-center gap-3 p-3 rounded-xl transition-colors ${isDark ? 'hover:bg-gray-800 active:bg-gray-700' : 'hover:bg-gray-100 active:bg-gray-200'}`}
+                    >
+                      <TokenIcon token={token} size="lg" />
+                      <div className="flex-1 min-w-0 text-left">
+                        <div className="font-semibold">{token.ticker}</div>
+                        <div className="text-xs text-gray-500 truncate">{token.name}</div>
+                      </div>
+                      <div className="text-sm text-gray-500 text-right">{getTokenBalance(token)}</div>
+                    </button>
+                  ))}
+                  {allDexTokens.length > 50 && (
+                    <p className="text-xs text-center text-gray-500 py-2">
+                      Use search to find more tokens ({allDexTokens.length - 50}+ more available)
+                    </p>
+                  )}
+                </>
+              )}
+              
+              {/* Loading All Tokens */}
+              {tokenSearch.length < 2 && loadingAllTokens && allDexTokens.length === 0 && (
+                <div className="flex items-center justify-center py-4 gap-2 text-gray-500 text-sm">
+                  <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                  Loading available tokens...
+                </div>
               )}
             </div>
           </div>
