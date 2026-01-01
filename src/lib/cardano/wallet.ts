@@ -1116,7 +1116,7 @@ export const searchDReps = async (query: string): Promise<DRepInfo[]> => {
       return info && info.active ? [info] : [];
     }
 
-    // Search by ID using internal API route to avoid CORS
+    // Search by ID or name using internal API route to avoid CORS
     const network = getCurrentNetwork();
 
     // Fetch DReps list (registered only) via internal API
@@ -1135,7 +1135,7 @@ export const searchDReps = async (query: string): Promise<DRepInfo[]> => {
       return [];
     }
 
-    // Filter and map results - only registered DReps matching search by ID
+    // Map results - API already filters by search and returns pre-processed metadata
     const results: DRepInfo[] = (data || [])
       .filter((item: { registered?: boolean }) => item.registered === true)
       .slice(0, 20)
@@ -1147,6 +1147,11 @@ export const searchDReps = async (query: string): Promise<DRepInfo[]> => {
         deposit?: string;
         registered?: boolean;
         amount?: string;
+        // Pre-processed fields from API route
+        name?: string;
+        bio?: string;
+        image?: string;
+        website?: string;
       }) => ({
         drepId: item.drep_id || "",
         view: item.hex || "",
@@ -1155,10 +1160,11 @@ export const searchDReps = async (query: string): Promise<DRepInfo[]> => {
         deposit: item.deposit || "0",
         active: item.registered ?? true,
         amount: item.amount || "0",
-        name: undefined,
-        image: undefined,
-        bio: undefined,
-        website: undefined,
+        // Use pre-processed fields from API route
+        name: item.name || undefined,
+        image: item.image || undefined,
+        bio: item.bio || undefined,
+        website: item.website || undefined,
       }));
 
     return results;
@@ -1211,7 +1217,8 @@ export const listDRepsFromKoios = async (
       return { dreps: [], hasMore: false };
     }
     
-    // Map Koios drep_info response to DRepInfo format - only include registered DReps
+    // Map Koios response to DRepInfo format
+    // The API route already processes meta_json and extracts name, bio, image, website
     const dreps: DRepInfo[] = (data || [])
       .filter((item: { registered?: boolean }) => item.registered === true)
       .map((item: {
@@ -1224,8 +1231,12 @@ export const listDRepsFromKoios = async (
         registered?: boolean;
         amount?: string;
         expires_epoch_no?: number;
+        // Pre-processed fields from API route
+        name?: string;
+        bio?: string;
+        image?: string;
+        website?: string;
       }) => {
-        // For DReps without metadata, show as Anonymous
         return {
           drepId: item.drep_id || "",
           view: item.hex || "",
@@ -1234,11 +1245,11 @@ export const listDRepsFromKoios = async (
           deposit: item.deposit || "0",
           active: item.registered ?? true,
           amount: item.amount || "0",
-          // Name will be undefined for anonymous DReps
-          name: undefined,
-          image: undefined,
-          bio: undefined,
-          website: undefined,
+          // Use pre-processed fields from API route (extracted from meta_json)
+          name: item.name || undefined,
+          image: item.image || undefined,
+          bio: item.bio || undefined,
+          website: item.website || undefined,
         };
       });
 
