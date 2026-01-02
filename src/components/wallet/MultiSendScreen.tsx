@@ -93,6 +93,9 @@ export function MultiSendScreen({ onClose }: MultiSendScreenProps) {
   const [pin, setPin] = useState("");
   const [pinError, setPinError] = useState<string | null>(null);
   
+  // Store recipients before PIN verification to avoid state issues
+  const [pendingRecipients, setPendingRecipients] = useState<MultiSendRecipient[]>([]);
+  
   // Available tokens with fetched info
   const [availableTokens, setAvailableTokens] = useState<TokenOption[]>([]);
   const [isFetchingTokens, setIsFetchingTokens] = useState(false);
@@ -455,6 +458,7 @@ export function MultiSendScreen({ onClose }: MultiSendScreenProps) {
     setSuccess(null);
 
     const recipients = buildRecipientList();
+    console.log("[MultiSend] handleRequestSend - recipients:", recipients);
 
     // Validate
     const validationErrors = validateRecipients(recipients);
@@ -474,44 +478,29 @@ export function MultiSendScreen({ onClose }: MultiSendScreenProps) {
       return;
     }
 
+    // Store recipients before showing PIN (to avoid state issues)
+    setPendingRecipients(recipients);
+    
     // Show PIN input
     setShowPinInput(true);
     setPin("");
     setPinError(null);
   }, [wallet, buildRecipientList, totalToSend, selectedTokenInfo]);
 
-  // Verify PIN and send
-  const handlePinComplete = useCallback(async (enteredPin: string) => {
-    setPinError(null);
-    try {
-      const storedWallet = getStoredWalletForVerification(activeWalletId || undefined);
-      if (!storedWallet || !storedWallet.pinHash) {
-        setPinError("Wallet configuration error");
-        return;
-      }
-      const isValid = verifyPin(enteredPin, storedWallet.pinHash);
-      if (!isValid) {
-        setPinError("Invalid PIN. Please try again.");
-        setPin("");
-        return;
-      }
-      
-      // PIN valid, proceed with send
-      setShowPinInput(false);
-      await handleSend();
-    } catch (err) {
-      console.error("PIN verification error:", err);
-      setPinError("Verification failed. Please try again.");
-      setPin("");
-    }
-  }, [activeWalletId]);
-
   // Send transaction (called after PIN verification)
   const handleSend = useCallback(async () => {
     setProgress(0);
     setIsLoading(true);
 
-    const recipients = buildRecipientList();
+    // Use the stored recipients from before PIN verification
+    const recipients = pendingRecipients;
+    console.log("[MultiSend] handleSend - using pendingRecipients:", recipients);
+
+    if (!recipients || recipients.length === 0) {
+      setError("No recipients found. Please add recipients and try again.");
+      setIsLoading(false);
+      return;
+    }
 
     try {
       if (recipients.length <= 40) {
@@ -549,8 +538,35 @@ export function MultiSendScreen({ onClose }: MultiSendScreenProps) {
     } finally {
       setIsLoading(false);
       setProgress(0);
+      setPendingRecipients([]); // Clear pending recipients
     }
-  }, [wallet, buildRecipientList, handleBatchComplete, refreshBalance, resetForm]);
+  }, [wallet, pendingRecipients, handleBatchComplete, refreshBalance, resetForm]);
+
+  // Verify PIN and send
+  const handlePinComplete = useCallback(async (enteredPin: string) => {
+    setPinError(null);
+    try {
+      const storedWallet = getStoredWalletForVerification(activeWalletId || undefined);
+      if (!storedWallet || !storedWallet.pinHash) {
+        setPinError("Wallet configuration error");
+        return;
+      }
+      const isValid = verifyPin(enteredPin, storedWallet.pinHash);
+      if (!isValid) {
+        setPinError("Invalid PIN. Please try again.");
+        setPin("");
+        return;
+      }
+      
+      // PIN valid, proceed with send
+      setShowPinInput(false);
+      await handleSend();
+    } catch (err) {
+      console.error("PIN verification error:", err);
+      setPinError("Verification failed. Please try again.");
+      setPin("");
+    }
+  }, [activeWalletId, handleSend]);
 
   // Count valid recipients (address must be present, and if handle, must be resolved)
   const validRecipientCount = rows.filter((r) => {
