@@ -13,11 +13,16 @@ import {
   type MultiSendRecipient,
   type BatchSendResult,
 } from "@/lib/cardano/multi-send";
+import { isAdaHandle, resolveRecipient } from "@/lib/cardano";
 
 interface RecipientRow {
   id: string;
   address: string;
   amount: string;
+  resolvedAddress?: string; // Resolved address for ADA Handle
+  isHandle?: boolean; // Whether input is ADA Handle
+  isResolving?: boolean; // Loading state while resolving
+  resolveError?: string; // Error message if resolve failed
 }
 
 type SendMode = "same" | "different";
@@ -84,6 +89,9 @@ export function MultiSendScreen({ onClose }: MultiSendScreenProps) {
   // Available tokens with fetched info
   const [availableTokens, setAvailableTokens] = useState<TokenOption[]>([]);
   const [isFetchingTokens, setIsFetchingTokens] = useState(false);
+  
+  // Handle resolution tracking
+  const [isResolvingHandles, setIsResolvingHandles] = useState(false);
 
   // Fetch token info from API and build available tokens list
   useEffect(() => {
@@ -168,10 +176,20 @@ export function MultiSendScreen({ onClose }: MultiSendScreenProps) {
     buildTokensList();
   }, [balance]);
 
-  // Get selected token info
-  const selectedTokenInfo = useMemo(() => {
-    return availableTokens.find((t) => t.unit === selectedToken) || availableTokens[0];
-  }, [availableTokens, selectedToken]);
+  // Get selected token info with default fallback
+  const selectedTokenInfo: TokenOption = useMemo(() => {
+    const found = availableTokens.find((t) => t.unit === selectedToken);
+    if (found) return found;
+    if (availableTokens.length > 0) return availableTokens[0];
+    // Default fallback when tokens not yet loaded
+    return {
+      unit: "lovelace",
+      name: "Cardano",
+      ticker: "ADA",
+      decimals: 6,
+      balance: balance?.lovelace || "0",
+    };
+  }, [availableTokens, selectedToken, balance?.lovelace]);
 
   // Format balance display
   const formatTokenBalance = (balanceStr: string, decimals: number): string => {
@@ -196,15 +214,84 @@ export function MultiSendScreen({ onClose }: MultiSendScreenProps) {
     });
   }, []);
 
-  // Update recipient row
+  // Update recipient row with ADA Handle detection
   const updateRow = useCallback(
     (id: string, field: "address" | "amount", value: string) => {
       setRows((prev) =>
-        prev.map((row) => (row.id === id ? { ...row, [field]: value } : row))
+        prev.map((row) => {
+          if (row.id !== id) return row;
+          
+          if (field === "address") {
+            // Check if it's an ADA Handle
+            const handle = isAdaHandle(value);
+            return { 
+              ...row, 
+              address: value,
+              isHandle: handle,
+              resolvedAddress: handle ? undefined : value, // Clear resolved if handle, or set directly if address
+              resolveError: undefined,
+            };
+          }
+          return { ...row, [field]: value };
+        })
       );
     },
     []
   );
+
+  // Resolve ADA Handles for all rows
+  const resolveAllHandles = useCallback(async () => {
+    const rowsWithHandles = rows.filter(r => r.isHandle && r.address.trim() && !r.resolvedAddress);
+    if (rowsWithHandles.length === 0) return;
+
+    setIsResolvingHandles(true);
+    
+    // Mark rows as resolving
+    setRows(prev => prev.map(row => 
+      row.isHandle && row.address.trim() && !row.resolvedAddress 
+        ? { ...row, isResolving: true } 
+        : row
+    ));
+
+    // Resolve all handles in parallel
+    const resolvePromises = rowsWithHandles.map(async (row) => {
+      try {
+        const result = await resolveRecipient(row.address.trim());
+        return { id: row.id, resolvedAddress: result.address, error: result.address ? undefined : "Handle not found" };
+      } catch {
+        return { id: row.id, resolvedAddress: null, error: "Failed to resolve" };
+      }
+    });
+
+    const results = await Promise.all(resolvePromises);
+    
+    // Update rows with resolved addresses
+    setRows(prev => prev.map(row => {
+      const result = results.find(r => r.id === row.id);
+      if (result) {
+        return {
+          ...row,
+          isResolving: false,
+          resolvedAddress: result.resolvedAddress || undefined,
+          resolveError: result.error,
+        };
+      }
+      return row;
+    }));
+
+    setIsResolvingHandles(false);
+  }, [rows]);
+
+  // Auto-resolve handles when addresses change (debounced)
+  useEffect(() => {
+    const hasUnresolvedHandles = rows.some(r => r.isHandle && r.address.trim() && !r.resolvedAddress && !r.isResolving);
+    if (hasUnresolvedHandles) {
+      const timer = setTimeout(() => {
+        resolveAllHandles();
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [rows, resolveAllHandles]);
 
   // Import from CSV
   const handleCsvImport = useCallback(() => {
@@ -243,21 +330,30 @@ export function MultiSendScreen({ onClose }: MultiSendScreenProps) {
     setError(null);
   }, [csvContent, mode, globalAmount, selectedToken, selectedTokenInfo.decimals]);
 
-  // Build recipients list from UI state
+  // Build recipients list from UI state (using resolved addresses for handles)
   const buildRecipientList = useCallback((): MultiSendRecipient[] => {
     const decimals = selectedTokenInfo.decimals;
     const multiplier = Math.pow(10, decimals);
 
     return rows
-      .filter((row) => row.address.trim())
+      .filter((row) => {
+        // Must have address input
+        if (!row.address.trim()) return false;
+        // If it's a handle, must be resolved
+        if (row.isHandle && !row.resolvedAddress) return false;
+        return true;
+      })
       .map((row) => {
         const amount = mode === "same" 
           ? parseFloat(globalAmount) 
           : parseFloat(row.amount);
         const rawQuantity = Math.floor(amount * multiplier);
+        
+        // Use resolved address for handles, otherwise use direct address
+        const finalAddress = row.isHandle ? row.resolvedAddress! : row.address.trim();
 
         return {
-          address: row.address.trim(),
+          address: finalAddress,
           assets: [{ unit: selectedToken, quantity: rawQuantity.toString() }],
         };
       });
@@ -357,7 +453,16 @@ export function MultiSendScreen({ onClose }: MultiSendScreenProps) {
     }
   }, [wallet, buildRecipientList, totalToSend, selectedTokenInfo, handleBatchComplete, refreshBalance]);
 
-  const validRecipientCount = rows.filter((r) => r.address.trim()).length;
+  // Count valid recipients (address must be present, and if handle, must be resolved)
+  const validRecipientCount = rows.filter((r) => {
+    if (!r.address.trim()) return false;
+    if (r.isHandle && !r.resolvedAddress) return false;
+    return true;
+  }).length;
+  
+  // Count pending handle resolutions
+  const pendingHandleCount = rows.filter(r => r.isHandle && r.address.trim() && !r.resolvedAddress && !r.resolveError).length;
+  
   const estimatedBatches = Math.ceil(validRecipientCount / 40);
 
   return (
@@ -524,13 +629,13 @@ export function MultiSendScreen({ onClose }: MultiSendScreenProps) {
           {showCsvImport && (
             <div className="mb-4 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
               <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
-                Format: address,amount (one per line). Amount in {selectedTokenInfo.ticker}.
+                Format: address or $handle,amount (one per line). Amount in {selectedTokenInfo.ticker}.
                 {mode === "same" && " Amount column is ignored in Same Amount mode."}
               </p>
               <textarea
                 value={csvContent}
                 onChange={(e) => setCsvContent(e.target.value)}
-                placeholder={`addr1q...,10\naddr1q...,5.5\naddr1q...,20`}
+                placeholder={`addr1q...,10\n$handle,5.5\naddr1q...,20`}
                 className="w-full h-32 p-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded text-sm font-mono resize-none text-gray-900 dark:text-white"
               />
               <Button
@@ -543,37 +648,74 @@ export function MultiSendScreen({ onClose }: MultiSendScreenProps) {
             </div>
           )}
 
-          {/* Recipient Rows */}
+          {/* Recipient Rows with ADA Handle Support */}
           <div className="space-y-2 max-h-64 overflow-y-auto">
             {rows.map((row, index) => (
-              <div key={row.id} className="flex gap-2 items-center">
-                <span className="text-xs text-gray-400 dark:text-gray-500 w-6">{index + 1}.</span>
-                <Input
-                  value={row.address}
-                  onChange={(e) => updateRow(row.id, "address", e.target.value)}
-                  placeholder="addr1..."
-                  className="flex-1 text-sm"
-                />
-                {mode === "different" && (
-                  <Input
-                    type="number"
-                    value={row.amount}
-                    onChange={(e) => updateRow(row.id, "amount", e.target.value)}
-                    placeholder={selectedTokenInfo.ticker}
-                    className="w-24 text-sm"
-                    min="0"
-                    step={selectedTokenInfo.decimals > 0 ? "0.1" : "1"}
-                  />
+              <div key={row.id} className="space-y-1">
+                <div className="flex gap-2 items-center">
+                  <span className="text-xs text-gray-400 dark:text-gray-500 w-6">{index + 1}.</span>
+                  <div className="flex-1 relative">
+                    <Input
+                      value={row.address}
+                      onChange={(e) => updateRow(row.id, "address", e.target.value)}
+                      placeholder="addr1... or $handle"
+                      className={`text-sm pr-8 ${
+                        row.isHandle && row.resolvedAddress ? "border-green-500 dark:border-green-600" : 
+                        row.resolveError ? "border-red-500 dark:border-red-600" : ""
+                      }`}
+                    />
+                    {/* Handle status indicator */}
+                    {row.isHandle && (
+                      <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                        {row.isResolving ? (
+                          <svg className="w-4 h-4 animate-spin text-blue-500" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                          </svg>
+                        ) : row.resolvedAddress ? (
+                          <svg className="w-4 h-4 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
+                          </svg>
+                        ) : row.resolveError ? (
+                          <svg className="w-4 h-4 text-red-500" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd"/>
+                          </svg>
+                        ) : null}
+                      </div>
+                    )}
+                  </div>
+                  {mode === "different" && (
+                    <Input
+                      type="number"
+                      value={row.amount}
+                      onChange={(e) => updateRow(row.id, "amount", e.target.value)}
+                      placeholder={selectedTokenInfo.ticker}
+                      className="w-24 text-sm"
+                      min="0"
+                      step={selectedTokenInfo.decimals > 0 ? "0.1" : "1"}
+                    />
+                  )}
+                  <button
+                    onClick={() => removeRow(row.id)}
+                    className="p-2 text-red-500 dark:text-red-400 hover:text-red-600 dark:hover:text-red-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded"
+                    disabled={rows.length <= 1}
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+                {/* Show resolved address for handles */}
+                {row.isHandle && row.resolvedAddress && (
+                  <p className="text-xs text-green-600 dark:text-green-400 ml-6 truncate">
+                    → {row.resolvedAddress.slice(0, 20)}...{row.resolvedAddress.slice(-10)}
+                  </p>
                 )}
-                <button
-                  onClick={() => removeRow(row.id)}
-                  className="p-2 text-red-500 dark:text-red-400 hover:text-red-600 dark:hover:text-red-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded"
-                  disabled={rows.length <= 1}
-                >
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
+                {row.resolveError && (
+                  <p className="text-xs text-red-500 dark:text-red-400 ml-6">
+                    ⚠️ {row.resolveError}
+                  </p>
+                )}
               </div>
             ))}
           </div>
@@ -666,9 +808,14 @@ export function MultiSendScreen({ onClose }: MultiSendScreenProps) {
 
       {/* Footer */}
       <div className="p-4 border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
+        {pendingHandleCount > 0 && (
+          <p className="text-xs text-yellow-600 dark:text-yellow-400 mb-2 text-center">
+            ⏳ Resolving {pendingHandleCount} ADA Handle{pendingHandleCount > 1 ? "s" : ""}...
+          </p>
+        )}
         <Button
           onClick={handleSend}
-          disabled={isLoading || validRecipientCount === 0}
+          disabled={isLoading || validRecipientCount === 0 || pendingHandleCount > 0 || isResolvingHandles}
           className="w-full"
           variant="primary"
         >
@@ -679,6 +826,14 @@ export function MultiSendScreen({ onClose }: MultiSendScreenProps) {
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
               </svg>
               Sending... {progress > 0 && `(${Math.round(progress)}%)`}
+            </span>
+          ) : isResolvingHandles ? (
+            <span className="flex items-center justify-center gap-2">
+              <svg className="animate-spin w-5 h-5" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              Resolving handles...
             </span>
           ) : (
             `Send ${selectedTokenInfo.ticker} to ${validRecipientCount} Recipients 🚀`
