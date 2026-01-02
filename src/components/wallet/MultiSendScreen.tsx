@@ -371,20 +371,28 @@ export function MultiSendScreen({ onClose }: MultiSendScreenProps) {
       });
   }, [rows, mode, globalAmount, selectedToken, selectedTokenInfo.decimals]);
 
-  // Calculate total to send
-  const totalToSend = useCallback(() => {
-    const recipients = buildRecipientList();
-    let total = BigInt(0);
-    for (const r of recipients) {
-      for (const a of r.assets) {
-        // Ensure quantity is valid before converting to BigInt
-        const qty = parseInt(a.quantity, 10);
-        if (!isNaN(qty) && qty > 0) {
-          total += BigInt(qty);
+  // Calculate total to send (safe version that never returns NaN)
+  const totalToSend = useCallback((): string => {
+    try {
+      const recipients = buildRecipientList();
+      if (!recipients || recipients.length === 0) return "0";
+      
+      let total = BigInt(0);
+      for (const r of recipients) {
+        for (const a of r.assets) {
+          // Ensure quantity is valid before converting to BigInt
+          const qtyStr = a.quantity || "0";
+          const qty = parseInt(qtyStr, 10);
+          if (!isNaN(qty) && qty > 0) {
+            total += BigInt(qty);
+          }
         }
       }
+      return total.toString();
+    } catch (err) {
+      console.error("totalToSend error:", err);
+      return "0";
     }
-    return total.toString();
   }, [buildRecipientList]);
 
   // Handle batch progress
@@ -723,7 +731,7 @@ export function MultiSendScreen({ onClose }: MultiSendScreenProps) {
               <div key={row.id} className="space-y-1">
                 <div className="flex gap-2 items-center">
                   <span className="text-xs text-gray-400 dark:text-gray-500 w-6 shrink-0">{index + 1}.</span>
-                  <div className="flex-1 min-w-0 relative">
+                  <div className="flex-[3] min-w-0 relative">
                     <Input
                       value={row.address}
                       onChange={(e) => updateRow(row.id, "address", e.target.value)}
@@ -759,7 +767,7 @@ export function MultiSendScreen({ onClose }: MultiSendScreenProps) {
                       value={row.amount}
                       onChange={(e) => updateRow(row.id, "amount", e.target.value)}
                       placeholder={selectedTokenInfo.ticker}
-                      className="w-20 shrink-0 text-sm"
+                      className="flex-1 shrink-0 text-sm max-w-[80px]"
                       min="0"
                       step={selectedTokenInfo.decimals > 0 ? "0.1" : "1"}
                     />
