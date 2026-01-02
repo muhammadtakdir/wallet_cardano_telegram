@@ -1,0 +1,692 @@
+"use client";
+
+import React, { useState, useCallback, useMemo, useEffect } from "react";
+import { useWalletStore } from "@/hooks/useWalletStore";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Card } from "@/components/ui/Card";
+import {
+  sendMultiTransaction,
+  sendMultiTransactionBatched,
+  parseCSVToRecipients,
+  validateRecipients,
+  type MultiSendRecipient,
+  type BatchSendResult,
+} from "@/lib/cardano/multi-send";
+
+interface RecipientRow {
+  id: string;
+  address: string;
+  amount: string;
+}
+
+type SendMode = "same" | "different";
+
+// Token info for selection
+interface TokenOption {
+  unit: string;
+  name: string;
+  ticker: string;
+  decimals: number;
+  balance: string;
+  image?: string;
+}
+
+interface MultiSendScreenProps {
+  onClose?: () => void;
+}
+
+// Decode hex asset name to readable string
+const decodeAssetName = (name: string): string => {
+  if (!name) return "Unknown";
+  if (/^[0-9a-fA-F]+$/.test(name) && name.length > 8) {
+    try {
+      const decoded = Buffer.from(name, "hex").toString("utf8");
+      if (/^[\x20-\x7E]+$/.test(decoded)) {
+        return decoded;
+      }
+    } catch {
+      // If decode fails, return original
+    }
+  }
+  return name;
+};
+
+export function MultiSendScreen({ onClose }: MultiSendScreenProps) {
+  const { _walletInstance: wallet, balance, refreshBalance } = useWalletStore();
+  
+  // Mode: same amount for all or different amounts
+  const [mode, setMode] = useState<SendMode>("same");
+  
+  // Selected token to send
+  const [selectedToken, setSelectedToken] = useState<string>("lovelace");
+  const [showTokenSelector, setShowTokenSelector] = useState(false);
+  
+  // Global amount when mode is "same"
+  const [globalAmount, setGlobalAmount] = useState("5");
+  
+  // Transaction note/memo
+  const [memo, setMemo] = useState("");
+  
+  // List of recipients
+  const [rows, setRows] = useState<RecipientRow[]>([
+    { id: crypto.randomUUID(), address: "", amount: "" },
+  ]);
+  
+  // UI State
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [progress, setProgress] = useState<number>(0);
+  const [showCsvImport, setShowCsvImport] = useState(false);
+  const [csvContent, setCsvContent] = useState("");
+  
+  // Available tokens with fetched info
+  const [availableTokens, setAvailableTokens] = useState<TokenOption[]>([]);
+  const [isFetchingTokens, setIsFetchingTokens] = useState(false);
+
+  // Fetch token info from API and build available tokens list
+  useEffect(() => {
+    const buildTokensList = async () => {
+      const tokens: TokenOption[] = [
+        {
+          unit: "lovelace",
+          name: "Cardano",
+          ticker: "ADA",
+          decimals: 6,
+          balance: balance?.lovelace || "0",
+          image: undefined,
+        },
+      ];
+
+      // Add native tokens from balance with fetched info
+      if (balance?.assets && balance.assets.length > 0) {
+        setIsFetchingTokens(true);
+
+        const tokenPromises = balance.assets.map(async (asset) => {
+          // Skip NFTs (quantity = 1)
+          const qty = BigInt(asset.quantity || "0");
+          if (qty <= BigInt(1)) return null;
+
+          // Fetch token info from API (includes decimals, name, ticker, logo)
+          let decimals: number = asset.metadata?.decimals ?? 0;
+          let fetchedName: string | null = null;
+          let fetchedTicker: string | null = null;
+          let fetchedLogo: string | null = null;
+
+          try {
+            const res = await fetch(`/api/dexhunter/token-info?unit=${asset.unit}`);
+            const data = await res.json();
+            console.log(`[MultiSend] token-info for ${asset.unit}:`, data);
+
+            if (data.decimals !== undefined && data.decimals !== null) {
+              decimals = Number(data.decimals);
+            }
+            if (data.name) {
+              fetchedName = data.name;
+            }
+            if (data.ticker) {
+              fetchedTicker = data.ticker;
+            }
+            if (data.logo) {
+              fetchedLogo = data.logo;
+            }
+          } catch (e) {
+            console.log(`[MultiSend] Failed to fetch token info for ${asset.unit}:`, e);
+          }
+
+          // Determine display name: fetched > metadata > decoded hex
+          const assetNameHex = asset.assetName || (asset.unit ? asset.unit.slice(56) : "");
+          const displayName = fetchedName || 
+                              asset.metadata?.name || 
+                              decodeAssetName(assetNameHex) ||
+                              "Unknown Token";
+          
+          const displayTicker = fetchedTicker || 
+                                asset.metadata?.ticker || 
+                                displayName.slice(0, 6);
+
+          return {
+            unit: asset.unit,
+            name: displayName,
+            ticker: displayTicker,
+            decimals: decimals,
+            balance: asset.quantity,
+            image: fetchedLogo || asset.metadata?.logo,
+          } as TokenOption;
+        });
+
+        const tokenResults = await Promise.all(tokenPromises);
+        const validTokens = tokenResults.filter((t): t is TokenOption => t !== null);
+        tokens.push(...validTokens);
+        setIsFetchingTokens(false);
+      }
+
+      setAvailableTokens(tokens);
+    };
+
+    buildTokensList();
+  }, [balance]);
+
+  // Get selected token info
+  const selectedTokenInfo = useMemo(() => {
+    return availableTokens.find((t) => t.unit === selectedToken) || availableTokens[0];
+  }, [availableTokens, selectedToken]);
+
+  // Format balance display
+  const formatTokenBalance = (balanceStr: string, decimals: number): string => {
+    if (decimals === 0) return BigInt(balanceStr).toLocaleString();
+    const num = Number(balanceStr) / Math.pow(10, decimals);
+    return num.toLocaleString(undefined, { maximumFractionDigits: decimals });
+  };
+
+  // Add new recipient row
+  const addRow = useCallback(() => {
+    setRows((prev) => [
+      ...prev,
+      { id: crypto.randomUUID(), address: "", amount: "" },
+    ]);
+  }, []);
+
+  // Remove recipient row
+  const removeRow = useCallback((id: string) => {
+    setRows((prev) => {
+      if (prev.length <= 1) return prev;
+      return prev.filter((row) => row.id !== id);
+    });
+  }, []);
+
+  // Update recipient row
+  const updateRow = useCallback(
+    (id: string, field: "address" | "amount", value: string) => {
+      setRows((prev) =>
+        prev.map((row) => (row.id === id ? { ...row, [field]: value } : row))
+      );
+    },
+    []
+  );
+
+  // Import from CSV
+  const handleCsvImport = useCallback(() => {
+    if (!csvContent.trim()) {
+      setError("CSV content is empty");
+      return;
+    }
+
+    const decimals = selectedTokenInfo.decimals;
+    const multiplier = Math.pow(10, decimals);
+    const globalAmountRaw = mode === "same" 
+      ? Math.floor(parseFloat(globalAmount) * multiplier).toString()
+      : undefined;
+
+    const recipients = parseCSVToRecipients(
+      csvContent,
+      selectedToken,
+      globalAmountRaw
+    );
+
+    if (recipients.length === 0) {
+      setError("No valid recipients found in CSV");
+      return;
+    }
+
+    // Convert to rows format
+    const newRows: RecipientRow[] = recipients.map((r) => ({
+      id: crypto.randomUUID(),
+      address: r.address,
+      amount: (Number(r.assets[0]?.quantity || 0) / multiplier).toString(),
+    }));
+
+    setRows(newRows);
+    setShowCsvImport(false);
+    setCsvContent("");
+    setError(null);
+  }, [csvContent, mode, globalAmount, selectedToken, selectedTokenInfo.decimals]);
+
+  // Build recipients list from UI state
+  const buildRecipientList = useCallback((): MultiSendRecipient[] => {
+    const decimals = selectedTokenInfo.decimals;
+    const multiplier = Math.pow(10, decimals);
+
+    return rows
+      .filter((row) => row.address.trim())
+      .map((row) => {
+        const amount = mode === "same" 
+          ? parseFloat(globalAmount) 
+          : parseFloat(row.amount);
+        const rawQuantity = Math.floor(amount * multiplier);
+
+        return {
+          address: row.address.trim(),
+          assets: [{ unit: selectedToken, quantity: rawQuantity.toString() }],
+        };
+      });
+  }, [rows, mode, globalAmount, selectedToken, selectedTokenInfo.decimals]);
+
+  // Calculate total to send
+  const totalToSend = useCallback(() => {
+    const recipients = buildRecipientList();
+    let total = BigInt(0);
+    for (const r of recipients) {
+      for (const a of r.assets) {
+        total += BigInt(a.quantity);
+      }
+    }
+    return total.toString();
+  }, [buildRecipientList]);
+
+  // Handle batch progress
+  const handleBatchComplete = useCallback(
+    (result: BatchSendResult, progressPct: number) => {
+      setProgress(progressPct);
+      if (result.success) {
+        console.log(`Batch ${result.batchIndex + 1} complete: ${result.txHash}`);
+      } else {
+        console.error(`Batch ${result.batchIndex + 1} failed: ${result.error}`);
+      }
+    },
+    []
+  );
+
+  // Send transaction
+  const handleSend = useCallback(async () => {
+    if (!wallet) {
+      setError("Wallet not connected");
+      return;
+    }
+
+    setError(null);
+    setSuccess(null);
+    setProgress(0);
+
+    const recipients = buildRecipientList();
+
+    // Validate
+    const validationErrors = validateRecipients(recipients);
+    if (validationErrors.length > 0) {
+      setError(validationErrors.join(". "));
+      return;
+    }
+
+    // Check balance
+    const totalRaw = totalToSend();
+    const availableRaw = selectedTokenInfo.balance;
+    if (BigInt(totalRaw) > BigInt(availableRaw)) {
+      const decimals = selectedTokenInfo.decimals;
+      setError(
+        `Insufficient balance. Need ${formatTokenBalance(totalRaw, decimals)} ${selectedTokenInfo.ticker} but only have ${formatTokenBalance(availableRaw, decimals)} ${selectedTokenInfo.ticker}`
+      );
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      if (recipients.length <= 40) {
+        const txHash = await sendMultiTransaction(wallet, recipients);
+        setSuccess(`✅ Transaction submitted!\nTx Hash: ${txHash}`);
+      } else {
+        const result = await sendMultiTransactionBatched(
+          wallet,
+          recipients,
+          handleBatchComplete
+        );
+        
+        if (result.failedBatches === 0) {
+          setSuccess(
+            `✅ All ${result.totalBatches} batches completed successfully!\n` +
+            `Sent to ${result.totalRecipients} recipients.`
+          );
+        } else {
+          setError(
+            `⚠️ ${result.successfulBatches}/${result.totalBatches} batches succeeded.\n` +
+            `${result.failedBatches} batches failed.`
+          );
+        }
+      }
+
+      if (refreshBalance) {
+        await refreshBalance();
+      }
+    } catch (err) {
+      console.error("Multi-send error:", err);
+      setError(err instanceof Error ? err.message : "Failed to send transaction");
+    } finally {
+      setIsLoading(false);
+      setProgress(0);
+    }
+  }, [wallet, buildRecipientList, totalToSend, selectedTokenInfo, handleBatchComplete, refreshBalance]);
+
+  const validRecipientCount = rows.filter((r) => r.address.trim()).length;
+  const estimatedBatches = Math.ceil(validRecipientCount / 40);
+
+  return (
+    <div className="flex flex-col h-full bg-gray-50 dark:bg-gray-950">
+      {/* Header */}
+      <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
+        <div className="flex items-center gap-3">
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+            >
+              <svg className="w-5 h-5 text-gray-600 dark:text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+          )}
+          <div>
+            <h1 className="text-xl font-bold text-gray-900 dark:text-white">Multi-Send</h1>
+            <p className="text-sm text-gray-500 dark:text-gray-400">Send to multiple wallets in one transaction</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {/* Token Selector */}
+        <Card className="p-4 bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800">
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Select Token to Send
+          </label>
+          <button
+            onClick={() => setShowTokenSelector(!showTokenSelector)}
+            className="w-full flex items-center justify-between p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              {selectedTokenInfo.unit === "lovelace" ? (
+                <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+                  <span className="text-xl font-bold text-blue-600">₳</span>
+                </div>
+              ) : selectedTokenInfo.image ? (
+                <img src={selectedTokenInfo.image} alt="" className="w-10 h-10 rounded-full" />
+              ) : (
+                <div className="w-10 h-10 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+                  <span className="text-sm font-bold text-green-600">{selectedTokenInfo.ticker.slice(0, 2)}</span>
+                </div>
+              )}
+              <div className="text-left">
+                <p className="font-medium text-gray-900 dark:text-white">{selectedTokenInfo.name}</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  Balance: {formatTokenBalance(selectedTokenInfo.balance, selectedTokenInfo.decimals)} {selectedTokenInfo.ticker}
+                </p>
+              </div>
+            </div>
+            <svg className={`w-5 h-5 text-gray-400 transition-transform ${showTokenSelector ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+
+          {/* Token dropdown */}
+          {showTokenSelector && (
+            <div className="mt-2 max-h-48 overflow-y-auto rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+              {availableTokens.map((token) => (
+                <button
+                  key={token.unit}
+                  onClick={() => {
+                    setSelectedToken(token.unit);
+                    setShowTokenSelector(false);
+                    setGlobalAmount(token.unit === "lovelace" ? "5" : "100");
+                  }}
+                  className={`w-full flex items-center gap-3 p-3 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${
+                    selectedToken === token.unit ? "bg-blue-50 dark:bg-blue-900/20" : ""
+                  }`}
+                >
+                  {token.unit === "lovelace" ? (
+                    <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+                      <span className="text-lg font-bold text-blue-600">₳</span>
+                    </div>
+                  ) : token.image ? (
+                    <img src={token.image} alt="" className="w-8 h-8 rounded-full" />
+                  ) : (
+                    <div className="w-8 h-8 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+                      <span className="text-xs font-bold text-green-600">{token.ticker.slice(0, 2)}</span>
+                    </div>
+                  )}
+                  <div className="text-left flex-1">
+                    <p className="font-medium text-gray-900 dark:text-white text-sm">{token.name}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      {formatTokenBalance(token.balance, token.decimals)} {token.ticker}
+                    </p>
+                  </div>
+                  {selectedToken === token.unit && (
+                    <svg className="w-5 h-5 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                    </svg>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+        </Card>
+
+        {/* Mode Toggle */}
+        <Card className="p-4 bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Amount Mode</span>
+            <div className="flex rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
+              <button
+                onClick={() => setMode("same")}
+                className={`px-4 py-2 text-sm transition-colors ${
+                  mode === "same"
+                    ? "bg-blue-600 text-white"
+                    : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700"
+                }`}
+              >
+                Same Amount
+              </button>
+              <button
+                onClick={() => setMode("different")}
+                className={`px-4 py-2 text-sm transition-colors ${
+                  mode === "different"
+                    ? "bg-blue-600 text-white"
+                    : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700"
+                }`}
+              >
+                Different Amounts
+              </button>
+            </div>
+          </div>
+
+          {/* Global Amount (only for "same" mode) */}
+          {mode === "same" && (
+            <div>
+              <label className="block text-sm text-gray-500 dark:text-gray-400 mb-1">
+                Amount per wallet ({selectedTokenInfo.ticker})
+              </label>
+              <Input
+                type="number"
+                value={globalAmount}
+                onChange={(e) => setGlobalAmount(e.target.value)}
+                placeholder={selectedToken === "lovelace" ? "5" : "100"}
+                min="0"
+                step={selectedTokenInfo.decimals > 0 ? "0.1" : "1"}
+              />
+            </div>
+          )}
+        </Card>
+
+        {/* Recipients List */}
+        <Card className="p-4 bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              Recipients ({validRecipientCount})
+            </span>
+            <button
+              onClick={() => setShowCsvImport(!showCsvImport)}
+              className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300"
+            >
+              {showCsvImport ? "Hide CSV" : "Import CSV"}
+            </button>
+          </div>
+
+          {/* CSV Import Section */}
+          {showCsvImport && (
+            <div className="mb-4 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                Format: address,amount (one per line). Amount in {selectedTokenInfo.ticker}.
+                {mode === "same" && " Amount column is ignored in Same Amount mode."}
+              </p>
+              <textarea
+                value={csvContent}
+                onChange={(e) => setCsvContent(e.target.value)}
+                placeholder={`addr1q...,10\naddr1q...,5.5\naddr1q...,20`}
+                className="w-full h-32 p-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded text-sm font-mono resize-none text-gray-900 dark:text-white"
+              />
+              <Button
+                onClick={handleCsvImport}
+                variant="secondary"
+                className="mt-2 w-full"
+              >
+                Import
+              </Button>
+            </div>
+          )}
+
+          {/* Recipient Rows */}
+          <div className="space-y-2 max-h-64 overflow-y-auto">
+            {rows.map((row, index) => (
+              <div key={row.id} className="flex gap-2 items-center">
+                <span className="text-xs text-gray-400 dark:text-gray-500 w-6">{index + 1}.</span>
+                <Input
+                  value={row.address}
+                  onChange={(e) => updateRow(row.id, "address", e.target.value)}
+                  placeholder="addr1..."
+                  className="flex-1 text-sm"
+                />
+                {mode === "different" && (
+                  <Input
+                    type="number"
+                    value={row.amount}
+                    onChange={(e) => updateRow(row.id, "amount", e.target.value)}
+                    placeholder={selectedTokenInfo.ticker}
+                    className="w-24 text-sm"
+                    min="0"
+                    step={selectedTokenInfo.decimals > 0 ? "0.1" : "1"}
+                  />
+                )}
+                <button
+                  onClick={() => removeRow(row.id)}
+                  className="p-2 text-red-500 dark:text-red-400 hover:text-red-600 dark:hover:text-red-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded"
+                  disabled={rows.length <= 1}
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            ))}
+          </div>
+
+          <Button
+            onClick={addRow}
+            variant="secondary"
+            className="mt-3 w-full"
+          >
+            + Add Recipient
+          </Button>
+        </Card>
+
+        {/* Summary */}
+        <Card className="p-4 bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800">
+          <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Summary</h3>
+          <div className="space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span className="text-gray-500 dark:text-gray-400">Token</span>
+              <span className="text-gray-900 dark:text-white font-medium">{selectedTokenInfo.name} ({selectedTokenInfo.ticker})</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-500 dark:text-gray-400">Recipients</span>
+              <span className="text-gray-900 dark:text-white">{validRecipientCount}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-500 dark:text-gray-400">Total Amount</span>
+              <span className="font-medium text-gray-900 dark:text-white">
+                {formatTokenBalance(totalToSend(), selectedTokenInfo.decimals)} {selectedTokenInfo.ticker}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-500 dark:text-gray-400">Transactions needed</span>
+              <span className="text-gray-900 dark:text-white">{estimatedBatches}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-500 dark:text-gray-400">Your Balance</span>
+              <span className="text-gray-900 dark:text-white">
+                {formatTokenBalance(selectedTokenInfo.balance, selectedTokenInfo.decimals)} {selectedTokenInfo.ticker}
+              </span>
+            </div>
+          </div>
+          
+          {estimatedBatches > 1 && (
+            <p className="mt-3 text-xs text-yellow-600 dark:text-yellow-400">
+              ⚠️ This will require {estimatedBatches} separate transactions due to the number of recipients.
+              You&apos;ll need to sign each batch.
+            </p>
+          )}
+        </Card>
+
+        {/* Transaction Note/Memo */}
+        <Card className="p-4 bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800">
+          <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
+            Note / Memo (Optional)
+          </label>
+          <textarea
+            value={memo}
+            onChange={(e) => setMemo(e.target.value.slice(0, 256))}
+            placeholder="Add a note for this bulk transaction (e.g., Airdrop, Rewards distribution, etc.)"
+            rows={2}
+            maxLength={256}
+            className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white text-sm resize-none focus:ring-2 focus:ring-blue-500"
+          />
+          <p className="text-xs text-gray-400 dark:text-gray-500 mt-1 text-right">{memo.length}/256</p>
+        </Card>
+
+        {/* Error/Success Messages */}
+        {error && (
+          <div className="p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg text-sm text-red-600 dark:text-red-300 whitespace-pre-line">
+            {error}
+          </div>
+        )}
+        {success && (
+          <div className="p-3 bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 rounded-lg text-sm text-green-600 dark:text-green-300 whitespace-pre-line">
+            {success}
+          </div>
+        )}
+
+        {/* Progress Bar */}
+        {isLoading && progress > 0 && (
+          <div className="w-full bg-gray-200 dark:bg-gray-800 rounded-full h-2">
+            <div
+              className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Footer */}
+      <div className="p-4 border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
+        <Button
+          onClick={handleSend}
+          disabled={isLoading || validRecipientCount === 0}
+          className="w-full"
+          variant="primary"
+        >
+          {isLoading ? (
+            <span className="flex items-center justify-center gap-2">
+              <svg className="animate-spin w-5 h-5" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              Sending... {progress > 0 && `(${Math.round(progress)}%)`}
+            </span>
+          ) : (
+            `Send ${selectedTokenInfo.ticker} to ${validRecipientCount} Recipients 🚀`
+          )}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+export default MultiSendScreen;

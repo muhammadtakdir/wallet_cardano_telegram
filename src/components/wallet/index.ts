@@ -46,3 +46,4 @@ export type { SwapScreenProps } from "./SwapScreen";
 
 export { GovernanceScreen } from "./GovernanceScreen";
 export type { GovernanceScreenProps } from "./GovernanceScreen";
+export { MultiSendScreen } from "./MultiSendScreen";

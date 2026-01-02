@@ -15,6 +15,7 @@ const AssetDetail = React.lazy(() => import("@/components/wallet/AssetDetail").t
 const StakingScreen = React.lazy(() => import("@/components/wallet/StakingScreen").then(m => ({ default: m.StakingScreen })));
 const SwapScreen = React.lazy(() => import("@/components/wallet/SwapScreen").then(m => ({ default: m.SwapScreen })));
 const GovernanceScreen = React.lazy(() => import("@/components/wallet/GovernanceScreen").then(m => ({ default: m.GovernanceScreen })));
+const MultiSendScreen = React.lazy(() => import("@/components/wallet/MultiSendScreen").then(m => ({ default: m.MultiSendScreen })));
 
 // Loading fallback for lazy components
 const LazyLoadingFallback = () => (
@@ -26,7 +27,7 @@ const LazyLoadingFallback = () => (
   </div>
 );
 
-type AppView = "loading" | "setup" | "create" | "import" | "import-pin" | "backup" | "unlock" | "dashboard" | "send" | "receive" | "asset-detail" | "staking" | "swap" | "governance";
+type AppView = "loading" | "setup" | "create" | "import" | "import-pin" | "backup" | "unlock" | "dashboard" | "send" | "receive" | "asset-detail" | "staking" | "swap" | "governance" | "multi-send";
 
 // Hydration safe hook - prevents SSR mismatch
 function useHydrated() {
@@ -579,6 +580,7 @@ export default function WalletPage() {
         onStaking={() => setView("staking")}
         onSwap={() => setView("swap")}
         onGovernance={() => setView("governance")}
+        onMultiSend={() => setView("multi-send")}
         onAssetClick={(asset) => {
           setSelectedAsset(asset);
           setView("asset-detail");
@@ -615,6 +617,17 @@ export default function WalletPage() {
       <React.Suspense fallback={<LazyLoadingFallback />}>
         <GovernanceScreen
           onBack={() => setView("dashboard")}
+        />
+      </React.Suspense>
+    );
+  }
+
+  // Render multi-send (bulk transaction)
+  if (view === "multi-send") {
+    return (
+      <React.Suspense fallback={<LazyLoadingFallback />}>
+        <MultiSendScreen
+          onClose={() => setView("dashboard")}
         />
       </React.Suspense>
     );

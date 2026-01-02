@@ -71,6 +71,7 @@ export const SendScreen: React.FC<SendScreenProps> = ({ onBack, onSuccess }) => 
   const [pin, setPin] = React.useState("");
   const [pinError, setPinError] = React.useState<string | null>(null);
   const [showQRScanner, setShowQRScanner] = React.useState(false);
+  const [memo, setMemo] = React.useState(""); // Transaction note/memo
 
   // Decode hex asset name to readable string
   const decodeAssetName = (name: string): string => {
@@ -624,6 +625,22 @@ export const SendScreen: React.FC<SendScreenProps> = ({ onBack, onSuccess }) => 
             </div>
           </Card>
 
+          {/* Transaction Note/Memo */}
+          <Card padding="lg">
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
+              Note / Memo (Optional)
+            </label>
+            <textarea
+              value={memo}
+              onChange={(e) => setMemo(e.target.value.slice(0, 256))}
+              placeholder="Add a note for this transaction (e.g., Payment for services, Gift, etc.)"
+              rows={2}
+              maxLength={256}
+              className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm resize-none focus:ring-2 focus:ring-blue-500"
+            />
+            <p className="text-xs text-gray-400 mt-1 text-right">{memo.length}/256</p>
+          </Card>
+
           {error && (
             <div className="p-3 bg-red-50 dark:bg-red-900/20 rounded-lg">
               <p className="text-sm text-red-600">{error}</p>
@@ -763,6 +780,14 @@ export const SendScreen: React.FC<SendScreenProps> = ({ onBack, onSuccess }) => 
                 {resolvedRecipient?.address || recipient}
               </p>
             </div>
+
+            {/* Memo/Note */}
+            {memo && (
+              <div className="bg-gray-50 dark:bg-gray-900 rounded-xl p-4">
+                <p className="text-xs text-gray-500 mb-1">Note / Memo</p>
+                <p className="text-sm text-gray-900 dark:text-white">{memo}</p>
+              </div>
+            )}
           </div>
 
           {/* Warning */}
