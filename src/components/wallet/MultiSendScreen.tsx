@@ -229,13 +229,16 @@ export function MultiSendScreen({ onClose }: MultiSendScreenProps) {
           if (row.id !== id) return row;
           
           if (field === "address") {
-            // Check if it's an ADA Handle
-            const handle = isAdaHandle(value);
+            // Trim whitespace and check if it's an ADA Handle
+            const trimmedValue = value.trim();
+            const handle = isAdaHandle(trimmedValue);
+            console.log("[MultiSend] updateRow address:", { value, trimmedValue, isHandle: handle });
             return { 
               ...row, 
-              address: value,
+              address: trimmedValue,
               isHandle: handle,
-              resolvedAddress: handle ? undefined : value, // Clear resolved if handle, or set directly if address
+              // For regular addresses, use the address directly. For handles, need resolution.
+              resolvedAddress: handle ? undefined : (trimmedValue.startsWith("addr") ? trimmedValue : undefined),
               resolveError: undefined,
             };
           }
@@ -342,27 +345,51 @@ export function MultiSendScreen({ onClose }: MultiSendScreenProps) {
     const decimals = selectedTokenInfo.decimals;
     const multiplier = Math.pow(10, decimals);
 
-    return rows
-      .filter((row) => {
-        // Must have address input
-        if (!row.address.trim()) return false;
-        // If it's a handle, must be resolved
-        if (row.isHandle && !row.resolvedAddress) return false;
-        // In different mode, must have valid amount
-        if (mode === "different") {
-          const amt = parseFloat(row.amount);
-          if (isNaN(amt) || amt <= 0) return false;
+    console.log("[MultiSend] Building recipient list from rows:", rows);
+    console.log("[MultiSend] Mode:", mode, "Global amount:", globalAmount);
+
+    const filtered = rows.filter((row) => {
+      const addr = row.address.trim();
+      // Must have address input
+      if (!addr) {
+        console.log("[MultiSend] Filtered out row - empty address:", row.id);
+        return false;
+      }
+      // If it's a handle, must be resolved
+      if (row.isHandle && !row.resolvedAddress) {
+        console.log("[MultiSend] Filtered out row - unresolved handle:", row.id, row.address);
+        return false;
+      }
+      // If not a handle but starts with addr, it's valid
+      // If not a handle and doesn't start with addr, it might be invalid but we let the blockchain validate
+      if (!row.isHandle && !addr.startsWith("addr")) {
+        console.log("[MultiSend] Warning - address doesn't start with 'addr':", row.id, addr);
+        // Still allow it, blockchain will validate
+      }
+      // In different mode, must have valid amount
+      if (mode === "different") {
+        const amt = parseFloat(row.amount);
+        if (isNaN(amt) || amt <= 0) {
+          console.log("[MultiSend] Filtered out row - invalid amount:", row.id, row.amount);
+          return false;
         }
-        return true;
-      })
-      .map((row) => {
+      }
+      console.log("[MultiSend] Row passed filter:", row.id, addr, "isHandle:", row.isHandle, "resolved:", row.resolvedAddress);
+      return true;
+    });
+
+    console.log("[MultiSend] Filtered rows count:", filtered.length);
+
+    return filtered.map((row) => {
         const amount = mode === "same" 
           ? parseFloat(globalAmount) || 0
           : parseFloat(row.amount) || 0;
         const rawQuantity = Math.floor(amount * multiplier);
         
         // Use resolved address for handles, otherwise use direct address
-        const finalAddress = row.isHandle ? row.resolvedAddress! : row.address.trim();
+        const finalAddress = row.isHandle && row.resolvedAddress 
+          ? row.resolvedAddress 
+          : row.address.trim();
 
         return {
           address: finalAddress,
