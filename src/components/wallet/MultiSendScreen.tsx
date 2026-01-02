@@ -5,6 +5,7 @@ import { useWalletStore } from "@/hooks/useWalletStore";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Card } from "@/components/ui/Card";
+import { PinInput } from "@/components/ui/PinInput";
 import {
   sendMultiTransaction,
   sendMultiTransactionBatched,
@@ -14,6 +15,7 @@ import {
   type BatchSendResult,
 } from "@/lib/cardano/multi-send";
 import { isAdaHandle, resolveRecipient } from "@/lib/cardano";
+import { verifyPin, getStoredWalletForVerification } from "@/lib/storage/encryption";
 
 interface RecipientRow {
   id: string;
@@ -58,7 +60,7 @@ const decodeAssetName = (name: string): string => {
 };
 
 export function MultiSendScreen({ onClose }: MultiSendScreenProps) {
-  const { _walletInstance: wallet, balance, refreshBalance } = useWalletStore();
+  const { _walletInstance: wallet, balance, refreshBalance, activeWalletId } = useWalletStore();
   
   // Mode: same amount for all or different amounts
   const [mode, setMode] = useState<SendMode>("same");
@@ -85,6 +87,11 @@ export function MultiSendScreen({ onClose }: MultiSendScreenProps) {
   const [progress, setProgress] = useState<number>(0);
   const [showCsvImport, setShowCsvImport] = useState(false);
   const [csvContent, setCsvContent] = useState("");
+  
+  // PIN verification state
+  const [showPinInput, setShowPinInput] = useState(false);
+  const [pin, setPin] = useState("");
+  const [pinError, setPinError] = useState<string | null>(null);
   
   // Available tokens with fetched info
   const [availableTokens, setAvailableTokens] = useState<TokenOption[]>([]);
@@ -341,12 +348,17 @@ export function MultiSendScreen({ onClose }: MultiSendScreenProps) {
         if (!row.address.trim()) return false;
         // If it's a handle, must be resolved
         if (row.isHandle && !row.resolvedAddress) return false;
+        // In different mode, must have valid amount
+        if (mode === "different") {
+          const amt = parseFloat(row.amount);
+          if (isNaN(amt) || amt <= 0) return false;
+        }
         return true;
       })
       .map((row) => {
         const amount = mode === "same" 
-          ? parseFloat(globalAmount) 
-          : parseFloat(row.amount);
+          ? parseFloat(globalAmount) || 0
+          : parseFloat(row.amount) || 0;
         const rawQuantity = Math.floor(amount * multiplier);
         
         // Use resolved address for handles, otherwise use direct address
@@ -365,7 +377,11 @@ export function MultiSendScreen({ onClose }: MultiSendScreenProps) {
     let total = BigInt(0);
     for (const r of recipients) {
       for (const a of r.assets) {
-        total += BigInt(a.quantity);
+        // Ensure quantity is valid before converting to BigInt
+        const qty = parseInt(a.quantity, 10);
+        if (!isNaN(qty) && qty > 0) {
+          total += BigInt(qty);
+        }
       }
     }
     return total.toString();
@@ -384,8 +400,17 @@ export function MultiSendScreen({ onClose }: MultiSendScreenProps) {
     []
   );
 
-  // Send transaction
-  const handleSend = useCallback(async () => {
+  // Reset form after successful transaction
+  const resetForm = useCallback(() => {
+    setRows([{ id: crypto.randomUUID(), address: "", amount: "" }]);
+    setGlobalAmount("5");
+    setMemo("");
+    setCsvContent("");
+    setShowCsvImport(false);
+  }, []);
+
+  // Request PIN before sending
+  const handleRequestSend = useCallback(() => {
     if (!wallet) {
       setError("Wallet not connected");
       return;
@@ -393,7 +418,6 @@ export function MultiSendScreen({ onClose }: MultiSendScreenProps) {
 
     setError(null);
     setSuccess(null);
-    setProgress(0);
 
     const recipients = buildRecipientList();
 
@@ -415,15 +439,52 @@ export function MultiSendScreen({ onClose }: MultiSendScreenProps) {
       return;
     }
 
+    // Show PIN input
+    setShowPinInput(true);
+    setPin("");
+    setPinError(null);
+  }, [wallet, buildRecipientList, totalToSend, selectedTokenInfo]);
+
+  // Verify PIN and send
+  const handlePinComplete = useCallback(async (enteredPin: string) => {
+    setPinError(null);
+    try {
+      const storedWallet = getStoredWalletForVerification(activeWalletId || undefined);
+      if (!storedWallet || !storedWallet.pinHash) {
+        setPinError("Wallet configuration error");
+        return;
+      }
+      const isValid = verifyPin(enteredPin, storedWallet.pinHash);
+      if (!isValid) {
+        setPinError("Invalid PIN. Please try again.");
+        setPin("");
+        return;
+      }
+      
+      // PIN valid, proceed with send
+      setShowPinInput(false);
+      await handleSend();
+    } catch (err) {
+      console.error("PIN verification error:", err);
+      setPinError("Verification failed. Please try again.");
+      setPin("");
+    }
+  }, [activeWalletId]);
+
+  // Send transaction (called after PIN verification)
+  const handleSend = useCallback(async () => {
+    setProgress(0);
     setIsLoading(true);
+
+    const recipients = buildRecipientList();
 
     try {
       if (recipients.length <= 40) {
-        const txHash = await sendMultiTransaction(wallet, recipients);
+        const txHash = await sendMultiTransaction(wallet!, recipients);
         setSuccess(`✅ Transaction submitted!\nTx Hash: ${txHash}`);
       } else {
         const result = await sendMultiTransactionBatched(
-          wallet,
+          wallet!,
           recipients,
           handleBatchComplete
         );
@@ -441,6 +502,9 @@ export function MultiSendScreen({ onClose }: MultiSendScreenProps) {
         }
       }
 
+      // Reset form after successful send
+      resetForm();
+
       if (refreshBalance) {
         await refreshBalance();
       }
@@ -451,12 +515,17 @@ export function MultiSendScreen({ onClose }: MultiSendScreenProps) {
       setIsLoading(false);
       setProgress(0);
     }
-  }, [wallet, buildRecipientList, totalToSend, selectedTokenInfo, handleBatchComplete, refreshBalance]);
+  }, [wallet, buildRecipientList, handleBatchComplete, refreshBalance, resetForm]);
 
   // Count valid recipients (address must be present, and if handle, must be resolved)
   const validRecipientCount = rows.filter((r) => {
     if (!r.address.trim()) return false;
     if (r.isHandle && !r.resolvedAddress) return false;
+    // In different mode, check valid amount
+    if (mode === "different") {
+      const amt = parseFloat(r.amount);
+      if (isNaN(amt) || amt <= 0) return false;
+    }
     return true;
   }).length;
   
@@ -653,13 +722,13 @@ export function MultiSendScreen({ onClose }: MultiSendScreenProps) {
             {rows.map((row, index) => (
               <div key={row.id} className="space-y-1">
                 <div className="flex gap-2 items-center">
-                  <span className="text-xs text-gray-400 dark:text-gray-500 w-6">{index + 1}.</span>
-                  <div className="flex-1 relative">
+                  <span className="text-xs text-gray-400 dark:text-gray-500 w-6 shrink-0">{index + 1}.</span>
+                  <div className="flex-1 min-w-0 relative">
                     <Input
                       value={row.address}
                       onChange={(e) => updateRow(row.id, "address", e.target.value)}
                       placeholder="addr1... or $handle"
-                      className={`text-sm pr-8 ${
+                      className={`text-sm pr-8 w-full ${
                         row.isHandle && row.resolvedAddress ? "border-green-500 dark:border-green-600" : 
                         row.resolveError ? "border-red-500 dark:border-red-600" : ""
                       }`}
@@ -690,14 +759,14 @@ export function MultiSendScreen({ onClose }: MultiSendScreenProps) {
                       value={row.amount}
                       onChange={(e) => updateRow(row.id, "amount", e.target.value)}
                       placeholder={selectedTokenInfo.ticker}
-                      className="w-24 text-sm"
+                      className="w-20 shrink-0 text-sm"
                       min="0"
                       step={selectedTokenInfo.decimals > 0 ? "0.1" : "1"}
                     />
                   )}
                   <button
                     onClick={() => removeRow(row.id)}
-                    className="p-2 text-red-500 dark:text-red-400 hover:text-red-600 dark:hover:text-red-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded"
+                    className="p-2 shrink-0 text-red-500 dark:text-red-400 hover:text-red-600 dark:hover:text-red-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded"
                     disabled={rows.length <= 1}
                   >
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -814,7 +883,7 @@ export function MultiSendScreen({ onClose }: MultiSendScreenProps) {
           </p>
         )}
         <Button
-          onClick={handleSend}
+          onClick={handleRequestSend}
           disabled={isLoading || validRecipientCount === 0 || pendingHandleCount > 0 || isResolvingHandles}
           className="w-full"
           variant="primary"
@@ -840,6 +909,47 @@ export function MultiSendScreen({ onClose }: MultiSendScreenProps) {
           )}
         </Button>
       </div>
+
+      {/* PIN Input Modal */}
+      {showPinInput && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <Card className="w-full max-w-sm p-6 bg-white dark:bg-gray-900">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2 text-center">
+              Enter PIN to Confirm
+            </h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4 text-center">
+              Sending {selectedTokenInfo.ticker} to {validRecipientCount} recipients
+            </p>
+            
+            <PinInput
+              length={6}
+              value={pin}
+              onChange={setPin}
+              onComplete={handlePinComplete}
+              error={pinError || undefined}
+              autoFocus
+            />
+            
+            {pinError && (
+              <p className="text-sm text-red-500 text-center mt-2">{pinError}</p>
+            )}
+            
+            <div className="flex gap-3 mt-4">
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setShowPinInput(false);
+                  setPin("");
+                  setPinError(null);
+                }}
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }
