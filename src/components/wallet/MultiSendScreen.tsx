@@ -726,55 +726,15 @@ export function MultiSendScreen({ onClose }: MultiSendScreenProps) {
           )}
 
           {/* Recipient Rows with ADA Handle Support */}
-          <div className="space-y-2 max-h-64 overflow-y-auto">
+          <div className="space-y-3 max-h-72 overflow-y-auto">
             {rows.map((row, index) => (
-              <div key={row.id} className="space-y-1">
-                <div className="flex gap-2 items-center">
-                  <span className="text-xs text-gray-400 dark:text-gray-500 w-6 shrink-0">{index + 1}.</span>
-                  <div className="flex-[3] min-w-0 relative">
-                    <Input
-                      value={row.address}
-                      onChange={(e) => updateRow(row.id, "address", e.target.value)}
-                      placeholder="addr1... or $handle"
-                      className={`text-sm pr-8 w-full ${
-                        row.isHandle && row.resolvedAddress ? "border-green-500 dark:border-green-600" : 
-                        row.resolveError ? "border-red-500 dark:border-red-600" : ""
-                      }`}
-                    />
-                    {/* Handle status indicator */}
-                    {row.isHandle && (
-                      <div className="absolute right-2 top-1/2 -translate-y-1/2">
-                        {row.isResolving ? (
-                          <svg className="w-4 h-4 animate-spin text-blue-500" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-                          </svg>
-                        ) : row.resolvedAddress ? (
-                          <svg className="w-4 h-4 text-green-500" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
-                          </svg>
-                        ) : row.resolveError ? (
-                          <svg className="w-4 h-4 text-red-500" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd"/>
-                          </svg>
-                        ) : null}
-                      </div>
-                    )}
-                  </div>
-                  {mode === "different" && (
-                    <Input
-                      type="number"
-                      value={row.amount}
-                      onChange={(e) => updateRow(row.id, "amount", e.target.value)}
-                      placeholder={selectedTokenInfo.ticker}
-                      className="flex-1 shrink-0 text-sm max-w-[80px]"
-                      min="0"
-                      step={selectedTokenInfo.decimals > 0 ? "0.1" : "1"}
-                    />
-                  )}
+              <div key={row.id} className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg space-y-2">
+                {/* Row header with number and delete button */}
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Recipient #{index + 1}</span>
                   <button
                     onClick={() => removeRow(row.id)}
-                    className="p-2 shrink-0 text-red-500 dark:text-red-400 hover:text-red-600 dark:hover:text-red-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded"
+                    className="p-1.5 text-red-500 dark:text-red-400 hover:text-red-600 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
                     disabled={rows.length <= 1}
                   >
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -782,16 +742,66 @@ export function MultiSendScreen({ onClose }: MultiSendScreenProps) {
                     </svg>
                   </button>
                 </div>
-                {/* Show resolved address for handles */}
+                
+                {/* Address field */}
+                <div className="relative">
+                  <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Address or $handle</label>
+                  <Input
+                    value={row.address}
+                    onChange={(e) => updateRow(row.id, "address", e.target.value)}
+                    placeholder="addr1... or $handle"
+                    className={`text-sm pr-8 w-full ${
+                      row.isHandle && row.resolvedAddress ? "border-green-500 dark:border-green-600" : 
+                      row.resolveError ? "border-red-500 dark:border-red-600" : ""
+                    }`}
+                  />
+                  {/* Handle status indicator */}
+                  {row.isHandle && (
+                    <div className="absolute right-2 bottom-2.5">
+                      {row.isResolving ? (
+                        <svg className="w-4 h-4 animate-spin text-blue-500" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                        </svg>
+                      ) : row.resolvedAddress ? (
+                        <svg className="w-4 h-4 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
+                        </svg>
+                      ) : row.resolveError ? (
+                        <svg className="w-4 h-4 text-red-500" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd"/>
+                        </svg>
+                      ) : null}
+                    </div>
+                  )}
+                </div>
+                
+                {/* Resolved address display */}
                 {row.isHandle && row.resolvedAddress && (
-                  <p className="text-xs text-green-600 dark:text-green-400 ml-6 truncate">
+                  <p className="text-xs text-green-600 dark:text-green-400 truncate">
                     → {row.resolvedAddress.slice(0, 20)}...{row.resolvedAddress.slice(-10)}
                   </p>
                 )}
                 {row.resolveError && (
-                  <p className="text-xs text-red-500 dark:text-red-400 ml-6">
+                  <p className="text-xs text-red-500 dark:text-red-400">
                     ⚠️ {row.resolveError}
                   </p>
+                )}
+                
+                {/* Amount field (only in Different Amounts mode) */}
+                {mode === "different" && (
+                  <div>
+                    <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Amount ({selectedTokenInfo.ticker})</label>
+                    <Input
+                      type="number"
+                      value={row.amount}
+                      onChange={(e) => updateRow(row.id, "amount", e.target.value)}
+                      placeholder={`0.00 ${selectedTokenInfo.ticker}`}
+                      className="text-sm w-full"
+                      min="0"
+                      step={selectedTokenInfo.decimals > 0 ? "0.1" : "1"}
+                    />
+                  </div>
                 )}
               </div>
             ))}
